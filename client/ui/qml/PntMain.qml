@@ -42,6 +42,7 @@ Window {
     ScrollView {
         id: scroll
         anchors.fill: parent
+        anchors.bottomMargin: versionButton.height + versionButton.anchors.bottomMargin
         contentWidth: availableWidth
         contentHeight: Math.max(content.implicitHeight + 56, availableHeight)
         clip: true
@@ -130,10 +131,16 @@ Window {
 
             Item { Layout.fillHeight: true }
 
-            PntUpdatePanel {
-                Layout.fillWidth: true
-            }
         }
+    }
+
+    PntUpdatePanel {
+        id: versionButton
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 8 + PageController.safeAreaBottomMargin
+        width: Math.min(implicitWidth, parent.width - 32)
+        onNotificationRequested: function(message) { notification.show(message) }
     }
 
     FileDialog {
