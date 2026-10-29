@@ -66,12 +66,14 @@ if(LINUX AND NOT ANDROID)
 endif()
 
 if(WIN32)
+    if(NOT PNT_CLIENT_ONLY)
     install(FILES
         ${CMAKE_SOURCE_DIR}/deploy/data/windows/post_install.cmd
         ${CMAKE_SOURCE_DIR}/deploy/data/windows/post_uninstall.cmd
         DESTINATION "."
         COMPONENT AmneziaVPN
     )
+    endif()
 
     set(CMAKE_INSTALL_SYSTEM_RUNTIME_LIBS_SKIP TRUE)
     include(InstallRequiredSystemLibraries)

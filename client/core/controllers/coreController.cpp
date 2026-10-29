@@ -12,6 +12,9 @@
 #include "logger.h"
 #include "secureQSettings.h"
 #include "core/utils/appUiConfig.h"
+#ifdef PNT_CLIENT_ONLY
+#include "pntController.h"
+#endif
 
 #if defined(Q_OS_ANDROID)
     #include "core/utils/installedAppsImageProvider.h"
@@ -256,6 +259,10 @@ void CoreController::initControllers()
 
     m_updateUiController = new UpdateUiController(m_updateController, this);
     setQmlContextProperty("UpdateController", m_updateUiController);
+#ifdef PNT_CLIENT_ONLY
+    setQmlContextProperty("PntController", new PntController(m_settings, m_serversRepository, m_appSettingsRepository,
+                                                          m_importCoreController, m_connectionController, this));
+#endif
 }
 
 void CoreController::initAndroidController()
@@ -361,7 +368,9 @@ void CoreController::updateTranslator(const QLocale &locale)
 
     emit translationsUpdated();
     if (m_languageUiController) {
+#ifndef PNT_CLIENT_ONLY
         emit websiteUrlChanged(m_languageUiController->getCurrentSiteUrl());
+#endif
     }
 }
 

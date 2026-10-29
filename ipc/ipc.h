@@ -8,7 +8,11 @@
 
 #include "../client/core/utils/utilities.h"
 
+#ifdef PNT_CLIENT_ONLY
+#define IPC_SERVICE_URL "local:PntVpnIpcInterface"
+#else
 #define IPC_SERVICE_URL "local:AmneziaVpnIpcInterface"
+#endif
 
 namespace amnezia {
 

@@ -14,7 +14,11 @@
 #include "windowstunnelservice.h"
 #include "wireguardutilswindows.h"
 
+#ifdef PNT_CLIENT_ONLY
+#define TUNNEL_SERVICE_NAME L"AmneziaWGTunnel$PntVPN"
+#else
 #define TUNNEL_SERVICE_NAME L"AmneziaWGTunnel$AmneziaVPN"
+#endif
 
 class WindowsDaemon final : public Daemon {
   Q_DISABLE_COPY_MOVE(WindowsDaemon)

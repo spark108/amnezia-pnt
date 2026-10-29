@@ -11,7 +11,9 @@
 
 #include "core/utils/errorCodes.h"
 
+#ifndef PNT_CLIENT_ONLY
 #include "agw.h"
+#endif
 
 class SecureAppSettingsRepository;
 
@@ -40,7 +42,9 @@ private:
     bool m_isStrictKillSwitchEnabled = false;
     SecureAppSettingsRepository *m_appSettingsRepository = nullptr;
 
+#ifndef PNT_CLIENT_ONLY
     agw_client_handle m_client = 0;
+#endif
     bool m_publicKeyMissing = false;
     QByteArray m_lastPersistedState;
 };

@@ -147,3 +147,6 @@ DeveloperIdApplicationCertificate.p12
 DeveloperIdInstallerCertificate.p12
 
 gwenv.sh
+/deploy/pnt-build/
+/deploy/pnt-dist/
+/deploy/PntVPN-windows-x64.zip

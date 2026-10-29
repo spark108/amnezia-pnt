@@ -5,16 +5,19 @@ class AmneziaVPN(ConanFile):
     generators = "VirtualBuildEnv", "CMakeConfigDeps"
 
     options = {
-        "macos_ne": [True, False]
+        "macos_ne": [True, False],
+        "pnt_only": [True, False]
     }
     default_options = {
-        "macos_ne": False
+        "macos_ne": False,
+        "pnt_only": False
     }
 
     def requirements(self):
         os = str(self.settings.os)
 
-        self.requires("libagw/1.0.8")
+        if not self.options.pnt_only:
+            self.requires("libagw/1.0.8")
 
         has_ne = os == "iOS" or (os == "Macos" and self.options.macos_ne)
         has_service = os == "Windows" or os == "Linux" or (os == "Macos" and not has_ne)

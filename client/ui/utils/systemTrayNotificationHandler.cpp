@@ -35,6 +35,11 @@ SystemTrayNotificationHandler::SystemTrayNotificationHandler(QObject* parent) :
     m_trayActionVisitWebSite = m_menu.addAction(QIcon(":/images/tray/link.png"), tr("Visit Website"), [&](){
         QDesktopServices::openUrl(QUrl(websiteUrl));
     });
+#ifdef PNT_CLIENT_ONLY
+    m_trayActionVisitWebSite->setVisible(false);
+    m_trayActionConnect->setVisible(false);
+    m_trayActionDisconnect->setVisible(false);
+#endif
 
     // Quit action: disconnect VPN first on macOS NE, else quit directly
     m_trayActionQuit = m_menu.addAction(QIcon(":/images/tray/cancel.png"),

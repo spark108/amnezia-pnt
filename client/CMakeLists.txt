@@ -43,14 +43,16 @@ endif()
 find_package(Qt6 REQUIRED COMPONENTS ${PACKAGES})
 find_package(OpenSSL REQUIRED)
 
-find_package(libagw REQUIRED)
+if(NOT PNT_CLIENT_ONLY)
+    find_package(libagw REQUIRED)
+    list(APPEND LIBS amnezia::libagw)
+endif()
 
 set(LIBS ${LIBS}
     Qt6::Core Qt6::Gui
     Qt6::Network Qt6::Xml Qt6::RemoteObjects
     Qt6::Quick Qt6::Svg Qt6::QuickControls2
     Qt6::Core5Compat Qt6::Concurrent
-    amnezia::libagw
 )
 
 find_package(Qt6 QUIET OPTIONAL_COMPONENTS CorePrivate)
@@ -128,6 +130,12 @@ endif()
 
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/3rdparty.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/cmake/sources.cmake)
+if(PNT_CLIENT_ONLY)
+    target_compile_options(${PROJECT} PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
+    list(FILTER SOURCES EXCLUDE REGEX "/gatewayController\\.cpp$")
+    list(APPEND SOURCES ${CMAKE_CURRENT_LIST_DIR}/core/controllers/pntController.cpp ${CMAKE_CURRENT_LIST_DIR}/core/controllers/pntGatewayController.cpp)
+    list(APPEND HEADERS ${CMAKE_CURRENT_LIST_DIR}/core/controllers/pntController.h)
+endif()
 
 set(_client_include_dirs
     ${CMAKE_CURRENT_LIST_DIR}/../ipc
@@ -247,6 +255,26 @@ target_link_libraries(${PROJECT} PRIVATE ${LIBS})
 target_compile_definitions(${PROJECT} PRIVATE "MZ_$<UPPER_CASE:${MZ_PLATFORM_NAME}>")
 
 target_sources(${PROJECT} PRIVATE ${SOURCES} ${HEADERS} ${RESOURCES} ${QRC} ${I18NQRC})
+if(PNT_CLIENT_ONLY AND WIN32)
+    set(PNT_SOURCE_DIR "${CMAKE_SOURCE_DIR}/../../pnt" CACHE PATH "PNT source directory")
+    if(NOT EXISTS "${PNT_SOURCE_DIR}/pnt.csproj")
+        message(FATAL_ERROR "Set PNT_SOURCE_DIR to the PNT repository containing pnt.csproj")
+    endif()
+    find_program(PNT_DOTNET dotnet REQUIRED)
+    file(GLOB PNT_TRANSPORT_SOURCES CONFIGURE_DEPENDS "${PNT_SOURCE_DIR}/*.cs")
+    set(PNT_TRANSPORT_DIR "${CMAKE_CURRENT_BINARY_DIR}/pnt-transport")
+    add_custom_command(OUTPUT "${PNT_TRANSPORT_DIR}/pnt.exe"
+        COMMAND "${PNT_DOTNET}" publish "${PNT_SOURCE_DIR}/pnt.csproj" -c Release -r win-x64
+            --self-contained true -p:PublishSingleFile=true -o "${PNT_TRANSPORT_DIR}"
+        DEPENDS ${PNT_TRANSPORT_SOURCES} "${PNT_SOURCE_DIR}/pnt.csproj" "${PNT_SOURCE_DIR}/deploy/vpn_adapter.py"
+        VERBATIM)
+    add_custom_target(pnt_transport ALL DEPENDS "${PNT_TRANSPORT_DIR}/pnt.exe")
+    add_dependencies(${PROJECT} pnt_transport)
+    add_custom_command(TARGET ${PROJECT} POST_BUILD
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${PNT_TRANSPORT_DIR}/pnt.exe" "$<TARGET_FILE_DIR:${PROJECT}>/pnt-transport.exe")
+    install(PROGRAMS "${PNT_TRANSPORT_DIR}/pnt.exe" DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME pnt-transport.exe COMPONENT AmneziaVPN)
+    install(FILES "${CMAKE_SOURCE_DIR}/deploy/pnt-install.ps1" DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME install.ps1 COMPONENT AmneziaVPN)
+endif()
 
 # Finalize the executable so Qt can gather/deploy QML modules and plugins correctly (Android needs this).
 if(COMMAND qt_import_qml_plugins)

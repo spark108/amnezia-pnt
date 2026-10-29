@@ -15,9 +15,13 @@
 #include "platforms/windows/windowsutils.h"
 #include "windowsdaemon.h"
 
+#ifdef PNT_CLIENT_ONLY
+#define TUNNEL_NAMED_PIPE "\\\\.\\pipe\\ProtectedPrefix\\Administrators\\AmneziaWG\\PntVPN"
+#else
 #define TUNNEL_NAMED_PIPE \
   "\\\\."                 \
   "\\pipe\\ProtectedPrefix\\Administrators\\AmneziaWG\\AmneziaVPN"
+#endif
 
 constexpr uint32_t WINDOWS_TUNNEL_MONITOR_TIMEOUT_MSEC = 2000;
 

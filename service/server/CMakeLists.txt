@@ -288,6 +288,9 @@ include_directories(
 
 
 add_executable(${PROJECT} ${SOURCES} ${HEADERS} ${RESOURCES})
+if(PNT_CLIENT_ONLY)
+    set_target_properties(${PROJECT} PROPERTIES OUTPUT_NAME "${CLIENT_SERVICE_NAME}")
+endif()
 target_link_libraries(${PROJECT} PRIVATE Qt6::Core Qt6::Widgets Qt6::Network Qt6::RemoteObjects Qt6::Core5Compat Qt6::DBus Qt6::Concurrent ${LIBS})
 target_compile_definitions(${PROJECT} PRIVATE "MZ_$<UPPER_CASE:${MZ_PLATFORM_NAME}>")
 

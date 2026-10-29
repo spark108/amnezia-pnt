@@ -1,0 +1,256 @@
+#include "pntController.h"
+
+#include <QCoreApplication>
+#include <QDir>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QTimer>
+#include <QUrl>
+#include <algorithm>
+
+PntController::PntController(SecureQSettings *settings, SecureServersRepository *servers,
+                             SecureAppSettingsRepository *appSettings, ImportController *importer,
+                             ConnectionController *connection, QObject *parent)
+    : QObject(parent),
+      m_settings(settings),
+      m_servers(servers),
+      m_appSettings(appSettings),
+      m_importer(importer),
+      m_connection(connection)
+{
+    m_profile = QJsonDocument::fromJson(m_settings->value("Pnt/profile").toByteArray()).object();
+    m_appSettings->setUseAmneziaDns(false);
+    m_appSettings->setPrimaryDns("1.1.1.1");
+    m_appSettings->setSecondaryDns("1.0.0.1");
+    connect(&m_process, &QProcess::readyReadStandardOutput, this, &PntController::readOutput);
+    connect(&m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart)
+            fail(tr("Файл транспорта PNT отсутствует или не запускается."));
+    });
+    connect(&m_process, &QProcess::finished, this, [this](int code, QProcess::ExitStatus) {
+        readOutput();
+        if (m_action == "connect" && m_sessionStarted) {
+            m_connection->closeConnection();
+            m_sessionStarted = false;
+            if (code != 0)
+                m_status = tr("Соединение транспорта PNT прервано.");
+        }
+        m_busy = false;
+        emit changed();
+    });
+    connect(m_connection, &ConnectionController::connectionStateChanged, this, [this](Vpn::ConnectionState state) {
+        if (m_sessionStarted && (state == Vpn::Disconnected || state == Vpn::Error)) {
+            m_sessionStarted = false;
+            stopAgent();
+            m_status = state == Vpn::Error ? tr("Ошибка VPN-соединения.") : tr("Отключено");
+            emit changed();
+        }
+    });
+}
+
+PntController::~PntController()
+{
+    stopAgent();
+}
+bool PntController::hasProfile() const
+{
+    return !m_profile.isEmpty();
+}
+bool PntController::busy() const
+{
+    return m_busy;
+}
+QString PntController::status() const
+{
+    return m_status;
+}
+QString PntController::selectedServer() const
+{
+    return m_selectedServer;
+}
+QVariantList PntController::servers() const
+{
+    return m_catalog;
+}
+
+void PntController::importProfile(const QUrl &url)
+{
+    if (hasProfile() || m_busy)
+        return;
+    QFile file(url.toLocalFile());
+    if (!file.open(QIODevice::ReadOnly) || file.size() > 1048576) {
+        fail(tr("Не удалось прочитать профиль PNT."));
+        return;
+    }
+    QJsonParseError error;
+    m_pendingProfile = QJsonDocument::fromJson(file.readAll(), &error).object();
+    if (error.error != QJsonParseError::NoError || m_pendingProfile.isEmpty()) {
+        fail(tr("Некорректный профиль PNT."));
+        return;
+    }
+    start("import");
+}
+
+void PntController::loadServers()
+{
+    if (!hasProfile() || m_busy || m_sessionStarted)
+        return;
+    m_status = tr("Получение доступных серверов…");
+    start("catalog");
+}
+
+void PntController::connectServer(const QString &id)
+{
+    if (m_busy || m_sessionStarted)
+        return;
+    const auto found = std::find_if(m_catalog.cbegin(), m_catalog.cend(),
+                                    [&id](const QVariant &item) { return item.toMap().value("id").toString() == id; });
+    if (found == m_catalog.cend())
+        return;
+    m_selectedServer = found->toMap().value("name").toString();
+    m_status = tr("Подготовка VPN-соединения…");
+    start("connect", id);
+}
+
+void PntController::disconnectVpn()
+{
+    m_sessionStarted = false;
+    m_connection->closeConnection();
+    stopAgent();
+    m_busy = false;
+    m_status = tr("Отключено");
+    emit changed();
+}
+
+void PntController::resetProfile()
+{
+    if (m_busy || m_sessionStarted)
+        return;
+    m_settings->remove("Pnt/profile");
+    m_profile = { };
+    m_catalog.clear();
+    m_selectedServer.clear();
+    if (!m_sessionServer.isEmpty())
+        m_servers->removeServer(m_sessionServer);
+    m_sessionServer.clear();
+    m_status.clear();
+    emit changed();
+}
+
+void PntController::start(const QString &action, const QString &server)
+{
+    stopAgent();
+    m_action = action;
+    m_output.clear();
+    m_busy = true;
+    QJsonObject request { { "action", action }, { "profile", action == "import" ? m_pendingProfile : m_profile } };
+    if (!server.isEmpty())
+        request["server"] = server;
+    m_process.setProgram(QDir(QCoreApplication::applicationDirPath()).filePath("pnt-transport.exe"));
+    m_process.setArguments({ "_vpn-client" });
+    m_process.start();
+    if (!m_process.waitForStarted(3000)) {
+        fail(tr("Не удалось запустить транспорт PNT."));
+        return;
+    }
+    m_process.write(QJsonDocument(request).toJson(QJsonDocument::Compact) + '\n');
+    emit changed();
+}
+
+void PntController::readOutput()
+{
+    m_output += m_process.readAllStandardOutput();
+    while (m_output.contains('\n')) {
+        const auto end = m_output.indexOf('\n');
+        const auto line = m_output.left(end);
+        m_output.remove(0, end + 1);
+        const auto result = QJsonDocument::fromJson(line).object();
+        if (!result.isEmpty())
+            acceptResult(result);
+    }
+}
+
+void PntController::acceptResult(const QJsonObject &result)
+{
+    if (result.contains("error")) {
+        fail(result.value("error").toString());
+        return;
+    }
+    if (result.contains("status")) {
+        if (result.value("status").toString() == "routing") {
+            m_status = tr("Маршрут PNT готов, проверка VPN-соединения…");
+            emit changed();
+            return;
+        }
+        m_status = result.value("mode").toString() == "direct" ? tr("Подключено напрямую") : tr("Подключено через PNT");
+        emit changed();
+        return;
+    }
+    if (m_action == "import") {
+        m_profile = m_pendingProfile;
+        m_pendingProfile = { };
+        m_settings->setValue("Pnt/profile", QJsonDocument(m_profile).toJson(QJsonDocument::Compact));
+        if (m_settings->value("Pnt/profile").toByteArray() != QJsonDocument(m_profile).toJson(QJsonDocument::Compact)) {
+            m_profile = { };
+            fail(tr("Не удалось сохранить профиль в защищённом хранилище Windows."));
+            return;
+        }
+        m_status = tr("Профиль PNT импортирован.");
+    } else if (m_action == "catalog") {
+        m_catalog = result.value("servers").toArray().toVariantList();
+        m_status = m_catalog.isEmpty() ? tr("Для этого профиля нет доступных VPN-серверов.") : tr("Выберите VPN-сервер");
+        emit serversReady();
+    } else if (m_action == "connect" && result.contains("config")) {
+        const auto imported = m_importer->extractConfigFromData(result.value("config").toString(), "pnt.conf");
+        if (imported.config.isEmpty() || imported.errorCode != amnezia::ErrorCode::NoError) {
+            fail(tr("VPN-сервер вернул неподдерживаемую конфигурацию."));
+            return;
+        }
+        if (!m_sessionServer.isEmpty())
+            m_servers->removeServer(m_sessionServer);
+        m_sessionServer = m_servers->addServer({ }, imported.config, serverConfigUtils::Native);
+        m_servers->setDefaultServer(m_sessionServer);
+        m_appSettings->removeAllVpnSites(amnezia::RouteMode::VpnAllExceptSites);
+        auto bypass = result.value("entrypoints").toArray();
+        bypass.append(result.value("host"));
+        for (const auto &ip : bypass) {
+            const auto address = ip.toString();
+            m_appSettings->addVpnSite(amnezia::RouteMode::VpnAllExceptSites, address, { address });
+        }
+        m_appSettings->setRouteMode(amnezia::RouteMode::VpnAllExceptSites);
+        m_appSettings->setSitesSplitTunnelingEnabled(true);
+        m_sessionStarted = true;
+        const auto error = m_connection->openConnection(m_sessionServer);
+        if (error != amnezia::ErrorCode::NoError) {
+            fail(tr("Не удалось запустить VPN. Проверьте установку службы PNT VPN."));
+            return;
+        }
+        m_status = tr("Проверка прямого VPN-соединения…");
+    }
+    m_busy = false;
+    emit changed();
+}
+
+void PntController::stopAgent()
+{
+    if (m_process.state() == QProcess::NotRunning)
+        return;
+    m_process.write("stop\n");
+    if (!m_process.waitForFinished(2000)) {
+        m_process.kill();
+        m_process.waitForFinished(2000);
+    }
+}
+
+void PntController::fail(const QString &message)
+{
+    m_status = message;
+    m_busy = false;
+    if (m_sessionStarted) {
+        m_sessionStarted = false;
+        m_connection->closeConnection();
+    }
+    m_process.kill();
+    emit changed();
+}

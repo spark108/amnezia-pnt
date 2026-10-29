@@ -33,6 +33,9 @@ ImportUiController::ImportUiController(ImportController* importController, QObje
 
 bool ImportUiController::extractConfigFromFile(const QString &fileName)
 {
+#ifdef PNT_CLIENT_ONLY
+    return false;
+#endif
     QString data;
     if (!SystemController::readFile(fileName, data)) {
         emit importErrorOccurred(ErrorCode::ImportOpenConfigError, false);
@@ -64,6 +67,9 @@ bool ImportUiController::extractConfigFromFile(const QString &fileName)
 
 bool ImportUiController::extractConfigFromData(QString data)
 {
+#ifdef PNT_CLIENT_ONLY
+    return false;
+#endif
     auto result = m_importController->extractConfigFromData(data);
     
     if (result.errorCode != ErrorCode::NoError) {
@@ -82,6 +88,9 @@ bool ImportUiController::extractConfigFromData(QString data)
 
 bool ImportUiController::extractConfigFromQr(const QByteArray &data)
 {
+#ifdef PNT_CLIENT_ONLY
+    return false;
+#endif
     auto result = m_importController->extractConfigFromQr(data);
     
     if (result.errorCode != ErrorCode::NoError) {

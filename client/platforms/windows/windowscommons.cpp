@@ -20,7 +20,11 @@
 #include "logger.h"
 #include "platforms/windows/windowsutils.h"
 
+#ifdef PNT_CLIENT_ONLY
+constexpr const char* VPN_NAME = "PntVPN";
+#else
 constexpr const char* VPN_NAME = "AmneziaVPN";
+#endif
 constexpr const char* WIREGUARD_DIR = "AmneziaWG";
 constexpr const char* DATA_DIR = "Data";
 
@@ -134,7 +138,7 @@ int WindowsCommons::VPNAdapterIndex() {
   // For someReason QNetworkInterface::fromName(MozillaVPN) does not work >:(
   auto adapterList = QNetworkInterface::allInterfaces();
   for (const auto& adapter : adapterList) {
-    if (adapter.humanReadableName().contains("AmneziaVPN")) {
+    if (adapter.humanReadableName().contains(VPN_NAME)) {
       return adapter.index();
     }
   }
