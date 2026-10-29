@@ -29,8 +29,13 @@ import javax.net.ssl.TrustManager
 import javax.net.ssl.X509TrustManager
 import kotlin.concurrent.thread
 
+private const val TCP_KEEPIDLE = 4
+private const val TCP_KEEPINTVL = 5
+private const val TCP_KEEPCNT = 6
+
 @androidx.annotation.Keep
 object PntTransport {
+    private val relayCursor = java.util.concurrent.atomic.AtomicInteger()
     @Volatile private var activeMode = ""
     fun setConnectionMode(mode: String) { activeMode = mode }
     @JvmStatic fun connectionMode(): String = activeMode
@@ -96,7 +101,7 @@ object PntTransport {
         require(hash(point).take(16).lowercase() == profile.getString("clientId")) { "PNT client identity mismatch" }
     }
 
-    class Channel(val socket: SSLSocket) : Closeable {
+    class Channel(val socket: SSLSocket, override val nodeId: String = "") : PntRelayLink {
         val input = DataInputStream(socket.inputStream)
         val output = DataOutputStream(socket.outputStream)
         override fun close() = socket.close()
@@ -115,27 +120,32 @@ object PntTransport {
             require(result.optString("type") == "vpn-result") { result.optString("error", "PNT request failed") }
             return result
         }
-        fun sendPacket(data: ByteArray, size: Int) {
+        override fun sendPacket(data: ByteArray, size: Int) {
             require(size in 1..65507)
             output.writeShort(size)
             output.write(data, 0, size)
             output.flush()
         }
-        fun receivePacket(): ByteArray {
+        override fun receivePacket(): ByteArray {
             val size = input.readUnsignedShort()
             require(size in 1..65507)
             return ByteArray(size).also { input.readFully(it) }
         }
     }
 
-    fun open(profile: JSONObject, action: String, server: String?, protect: ((Socket) -> Boolean)? = null): Pair<Channel, JSONObject> {
+    fun open(profile: JSONObject, action: String, server: String?, protect: ((Socket) -> Boolean)? = null, exclude: String? = null, timeoutMillis: Int = 50000): Pair<Channel, JSONObject> {
+        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(timeoutMillis.toLong())
         val store = identity(profile)
         val managers = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply { init(store, CharArray(0)) }
         val nodes = profile.getJSONArray("entrypoints")
         var last: Exception? = null
-        for (index in 0 until nodes.length()) {
+        val offset = if (action == "udp") Math.floorMod(relayCursor.incrementAndGet(), nodes.length()) else 0
+        for (position in 0 until nodes.length()) {
+            val index = (position + offset) % nodes.length()
             val node = nodes.getJSONObject(index)
-            if (node.optBoolean("removed")) continue
+            if (node.optBoolean("removed") || node.optString("id") == exclude) continue
+            fun remaining(): Int = ((deadline - System.nanoTime()) / 1000000).coerceIn(1, timeoutMillis.toLong()).toInt()
+            if (System.nanoTime() >= deadline) break
             var raw: Socket? = null
             var secure: SSLSocket? = null
             try {
@@ -147,14 +157,25 @@ object PntTransport {
                     }
                 }
                 val context = SSLContext.getInstance("TLSv1.3").apply { init(managers.keyManagers, arrayOf<TrustManager>(trust), null) }
-                raw = Socket().apply { bind(InetSocketAddress(0)) }
+                raw = Socket().apply {
+                    bind(InetSocketAddress(0))
+                    keepAlive = true
+                    android.os.ParcelFileDescriptor.fromSocket(this).use {
+                        runCatching {
+                            android.system.Os.setsockoptInt(it.fileDescriptor, android.system.OsConstants.IPPROTO_TCP, TCP_KEEPIDLE, 3)
+                            android.system.Os.setsockoptInt(it.fileDescriptor, android.system.OsConstants.IPPROTO_TCP, TCP_KEEPINTVL, 2)
+                            android.system.Os.setsockoptInt(it.fileDescriptor, android.system.OsConstants.IPPROTO_TCP, TCP_KEEPCNT, 3)
+                        }
+                    }
+                }
                 require(protect == null || protect(raw)) { "Cannot protect PNT control socket" }
-                raw.connect(InetSocketAddress(node.getString("ip"), 442), 5000)
+                raw.connect(InetSocketAddress(node.getString("ip"), 442), minOf(5000, remaining()))
                 secure = context.socketFactory.createSocket(raw, node.getString("ip"), 442, true) as SSLSocket
                 secure.enabledProtocols = arrayOf("TLSv1.3")
-                secure.soTimeout = 50000
+                secure.soTimeout = remaining()
                 secure.startHandshake()
-                val channel = Channel(secure)
+                secure.soTimeout = remaining()
+                val channel = Channel(secure, node.getString("id"))
                 channel.message(JSONObject().put("type", "vpn-client").put("id", profile.getString("clientId")).put("name", action).apply { if (server != null) put("target", server) })
                 return channel to channel.reply()
             } catch (error: Exception) {
@@ -201,17 +222,23 @@ object PntTransport {
 }
 
 class PntVpnSession(private val service: android.net.VpnService, private val metadata: JSONObject, private val onFailure: (String) -> Unit) : Closeable {
-    val mode: String get() = if (relay == null) "direct" else "relay"
+    val mode: String get() = if (relay.enabled) "relay" else "direct"
     private val running = AtomicBoolean(true)
     private val profile = metadata.getJSONObject("profile")
     private val server = metadata.getString("server")
     private val local = DatagramSocket(0, InetAddress.getByName("127.0.0.1"))
     private var direct: DatagramSocket? = null
-    @Volatile private var relay: PntTransport.Channel? = null
+    private val relay = PntRelay({ avoid ->
+        val nodes = profile.getJSONArray("entrypoints")
+        if ((0 until nodes.length()).none { !nodes.getJSONObject(it).optBoolean("removed") && nodes.getJSONObject(it).optString("id") != avoid }) null
+        else PntTransport.open(profile, "udp", server, { service.protect(it) }, avoid, 8000).first.apply { socket.soTimeout = 0 }
+    }, { packet ->
+        lastTraffic = android.os.SystemClock.elapsedRealtime()
+        consumer?.let { local.send(DatagramPacket(packet, packet.size, it)) }
+    }, { android.util.Log.i("PntTransport", "PNT relay route ready") })
     @Volatile private var consumer: InetSocketAddress? = null
     @Volatile private var lastPacket: ByteArray? = null
     @Volatile private var lastTraffic = 0L
-    private val writer = Any()
     private val workers = mutableListOf<Thread>()
 
     fun start(config: JSONObject) {
@@ -227,6 +254,7 @@ class PntVpnSession(private val service: android.net.VpnService, private val met
         val data = config.optJSONObject("awg_config_data") ?: config.optJSONObject("wireguard_config_data") ?: error("PNT requires AmneziaWG or WireGuard")
         data.put("hostName", "127.0.0.1").put("port", local.localPort)
         config.put("hostName", "127.0.0.1")
+        relay.start()
         android.util.Log.i("PntTransport", "IPv4 loopback UDP listener ready")
         launch {
             val buffer = ByteArray(65507)
@@ -236,12 +264,10 @@ class PntVpnSession(private val service: android.net.VpnService, private val met
                 val sender = packet.socketAddress as InetSocketAddress
                 if (consumer == null) android.util.Log.i("PntTransport", "Receiving packets from VPN backend")
                 consumer = sender
-                lastPacket = packet.data.copyOf(packet.length)
-                synchronized(writer) {
-                    val channel = relay
-                    if (channel != null) channel.sendPacket(packet.data, packet.length)
-                    else try { outgoing.send(DatagramPacket(packet.data, packet.length)) } catch (_: SocketException) { }
-                }
+                val bytes = packet.data.copyOf(packet.length)
+                lastPacket = bytes
+                if (relay.enabled) relay.send(bytes)
+                else try { outgoing.send(DatagramPacket(packet.data, packet.length)) } catch (_: SocketException) { }
             }
         }
         launch {
@@ -251,7 +277,7 @@ class PntVpnSession(private val service: android.net.VpnService, private val met
                 try {
                     val packet = DatagramPacket(buffer, buffer.size)
                     outgoing.receive(packet)
-                    if (relay == null && consumer != null) {
+                    if (!relay.enabled && consumer != null) {
                         lastTraffic = android.os.SystemClock.elapsedRealtime()
                         local.send(DatagramPacket(packet.data, packet.length, consumer))
                     }
@@ -261,27 +287,12 @@ class PntVpnSession(private val service: android.net.VpnService, private val met
         launch {
             Thread.sleep(10000)
             while (running.get()) {
-                val stats = JSONObject(PntTransport.request(profile, "stats", server, protect).getString("vpnPayload"))
-                if (!running.get()) break
-                if (relay == null && !(stats.getLong("handshake") > baseline && android.os.SystemClock.elapsedRealtime() - lastTraffic < 60000)) {
-                    val (channel, _) = PntTransport.open(profile, "udp", server, protect)
-                    android.util.Log.i("PntTransport", "PNT UDP relay connected")
-                    synchronized(writer) {
-                        relay = channel
-                        if (!running.get()) {
-                            channel.close()
-                            return@synchronized
-                        }
-                        channel.socket.soTimeout = 0
-                        lastPacket?.let { channel.sendPacket(it, it.size) }
-                    }
-                    launch {
-                        while (running.get()) {
-                            val packet = channel.receivePacket()
-                            lastTraffic = android.os.SystemClock.elapsedRealtime()
-                            consumer?.let { local.send(DatagramPacket(packet, packet.size, it)) }
-                        }
-                    }
+                try {
+                    val stats = JSONObject(PntTransport.request(profile, "stats", server, protect).getString("vpnPayload"))
+                    if (!running.get()) break
+                    if (!relay.enabled && !(stats.getLong("handshake") > baseline && android.os.SystemClock.elapsedRealtime() - lastTraffic < 60000)) relay.enable(lastPacket)
+                } catch (_: Exception) {
+                    if (running.get() && android.os.SystemClock.elapsedRealtime() - lastTraffic > 60000) relay.enable(lastPacket)
                 }
                 Thread.sleep(15000)
             }
@@ -300,7 +311,7 @@ class PntVpnSession(private val service: android.net.VpnService, private val met
         if (!running.getAndSet(false)) return
         local.close()
         direct?.close()
-        runCatching { relay?.close() }
+        relay.close()
         synchronized(workers) { workers.forEach { if (it !== Thread.currentThread()) it.interrupt() } }
     }
 }

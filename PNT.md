@@ -32,7 +32,7 @@ Split tunneling settings are available from the main window while disconnected. 
 
 The first server adapter supports AmneziaWG on Debian/Linux, both native interfaces and Docker installations. An administrator must explicitly register each exit server using `pnt vpn add server <node> <display-name>` and grant client access. Update transit nodes before using client VPN transport.
 
-The first relayed UDP transport uses encrypted PNT TCP streams. It preserves packet boundaries, but packet loss can increase latency. If the relay session breaks, the VPN disconnects and a new Connect can select another verified route. QUIC and seamless stream replacement are not included in this version.
+Relayed UDP uses encrypted PNT TCP streams. The client prepares a second relay through a different entry node when available. A broken active stream promotes the connected standby and replenishes the reserve in the background. If every relay is unavailable, the local VPN interface, keys and address stay in place while the transport reconnects. The short packet queue is bounded and discards packets older than five seconds. TCP keepalive detects a lost relay connection, including an idle one. No new VPN configuration is issued during relay recovery. Existing inner TCP sessions can retransmit missing packets while the same exit server remains available; UDP packets can be lost during the switch. Failure or replacement of the exit server itself cannot preserve its existing NAT connections. QUIC is not included.
 
 ## Android
 

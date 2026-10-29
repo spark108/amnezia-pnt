@@ -16,6 +16,9 @@
 #include <QTimer>
 #include <QUrl>
 #include <QtConcurrent/QtConcurrentRun>
+#ifdef Q_OS_WIN
+    #include <qt_windows.h>
+#endif
 #include <algorithm>
 #ifdef Q_OS_ANDROID
     #include <QJniObject>
@@ -31,6 +34,13 @@ PntController::PntController(SecureQSettings *settings, SecureServersRepository 
       m_importer(importer),
       m_connection(connection)
 {
+#ifdef Q_OS_WIN
+    m_process.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments *arguments) {
+        arguments->flags |= CREATE_NO_WINDOW;
+        arguments->startupInfo->dwFlags |= STARTF_USESHOWWINDOW;
+        arguments->startupInfo->wShowWindow = SW_HIDE;
+    });
+#endif
     m_profile = QJsonDocument::fromJson(m_settings->value("Pnt/profile").toByteArray()).object();
     m_currentServer = m_settings->value("Pnt/serverId").toString();
     m_selectedServer = m_settings->value("Pnt/serverName").toString();
@@ -397,7 +407,8 @@ void PntController::acceptResult(const QJsonObject &result)
     }
     if (result.contains("status")) {
         if (result.value("status").toString() == "routing") {
-            m_status = tr("Маршрут PNT готов, проверка VPN-соединения…");
+            m_status = m_connection->isConnected() ? tr("Подключено через PNT")
+                                                   : tr("Маршрут PNT готов, проверка VPN-соединения…");
             emit changed();
             return;
         }
