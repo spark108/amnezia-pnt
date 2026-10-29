@@ -2,6 +2,9 @@
     <qresource prefix="/ui/qml">
         <file>PntMain.qml</file>
         <file>Components/PntServerSheet.qml</file>
+        <file>Components/PntConnectionStats.qml</file>
+        <file>Components/PntSplitTunnelMenu.qml</file>
+        <file>Components/PntSplitTunnelSheet.qml</file>
         <file>Components/CopyableValueRow.qml</file>
         <file>Components/ConfigContentSheet.qml</file>
         <file>Components/QrCodeCard.qml</file>

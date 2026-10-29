@@ -64,6 +64,7 @@ public:
     bool isContainerSupported(DockerContainer container) const;
 
 signals:
+    void bytesChanged(quint64 receivedBytes, quint64 sentBytes);
     void connectionStateChanged(Vpn::ConnectionState state);
     void openConnectionRequested(const QString &serverId, DockerContainer container, const QJsonObject &vpnConfiguration);
     void closeConnectionRequested();

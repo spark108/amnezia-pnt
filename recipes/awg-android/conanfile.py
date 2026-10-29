@@ -1,6 +1,6 @@
 from conan import ConanFile
 from conan.tools.cmake import cmake_layout, CMake, CMakeToolchain
-from conan.tools.files import copy, replace_in_file
+from conan.tools.files import copy, replace_in_file, load, save
 from conan.tools.env import VirtualBuildEnv, Environment
 from conan.errors import ConanInvalidConfiguration
 from conan.tools.scm import Git
@@ -74,6 +74,9 @@ class AwgAndroid(ConanFile):
                 'shasum -a 256 -c'
             )
         elif platform.system() == 'Windows':
+            for relative in ("tunnel/tools/CMakeLists.txt", "tunnel/tools/libwg-go/Makefile"):
+                path = os.path.join(self.source_folder, relative)
+                save(self, path, load(self, path).replace("\r\n", "\n"))
             # elf-cleaner uses sys/mman.h (POSIX only) and cannot be built on Windows;
             # skip it — DT_FLAGS_1 warnings only affect Android < 6.0
             replace_in_file(self,

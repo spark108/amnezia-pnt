@@ -29,6 +29,7 @@ ConnectionController::ConnectionController(SecureServersRepository* serversRepos
       m_vpnConnection(vpnConnection)
 {
     connect(m_vpnConnection, &VpnConnection::connectionStateChanged, this, &ConnectionController::connectionStateChanged);
+    connect(m_vpnConnection, &VpnConnection::bytesChanged, this, &ConnectionController::bytesChanged);
     connect(this, &ConnectionController::openConnectionRequested, m_vpnConnection, &VpnConnection::connectToVpn, Qt::QueuedConnection);
     connect(this, &ConnectionController::closeConnectionRequested, m_vpnConnection, &VpnConnection::disconnectFromVpn, Qt::QueuedConnection);
     connect(this, &ConnectionController::killSwitchModeChangedRequested, m_vpnConnection, &VpnConnection::onKillSwitchModeChanged, Qt::QueuedConnection);
@@ -202,6 +203,10 @@ ErrorCode ConnectionController::prepareConnection(const QString &serverId,
 
     vpnConfiguration = createConnectionConfiguration(dns, isApiConfig, hostName, description, configVersion,
                                                      containerConfigModel, container);
+#if defined(PNT_CLIENT_ONLY)
+    const auto source = m_serversRepository->serverJsonById(serverId);
+    if (source.has_value() && source->contains("pnt")) vpnConfiguration["pnt"] = source->value("pnt");
+#endif
 
     return ErrorCode::NoError;
 }

@@ -21,6 +21,7 @@ WireguardProtocol::WireguardProtocol(const QJsonObject &configuration, QObject *
             [this](const QString& serverIpv4Gateway,
                    const QString& deviceIpv4Address, uint64_t txBytes,
                    uint64_t rxBytes) {
+                setBytesChanged(rxBytes, txBytes);
                 const QString previousGateway = m_vpnGateway;
                 const QString previousLocal = m_vpnLocalAddress;
 

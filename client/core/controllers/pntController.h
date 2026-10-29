@@ -1,8 +1,11 @@
 #pragma once
 
+#include <QElapsedTimer>
 #include <QJsonObject>
+#include <QNetworkAccessManager>
 #include <QObject>
 #include <QProcess>
+#include <QTimer>
 #include <QUrl>
 #include <QVariantList>
 
@@ -19,6 +22,14 @@ class PntController : public QObject
     Q_PROPERTY(QString status READ status NOTIFY changed)
     Q_PROPERTY(QString selectedServer READ selectedServer NOTIFY changed)
     Q_PROPERTY(QVariantList servers READ servers NOTIFY changed)
+    Q_PROPERTY(QString vpnAddress READ vpnAddress NOTIFY changed)
+    Q_PROPERTY(QString externalAddress READ externalAddress NOTIFY changed)
+    Q_PROPERTY(QString handshake READ handshake NOTIFY changed)
+    Q_PROPERTY(QString connectionMode READ connectionMode NOTIFY changed)
+    Q_PROPERTY(QString received READ received NOTIFY changed)
+    Q_PROPERTY(QString sent READ sent NOTIFY changed)
+    Q_PROPERTY(QString receiveSpeed READ receiveSpeed NOTIFY changed)
+    Q_PROPERTY(QString sendSpeed READ sendSpeed NOTIFY changed)
 
 public:
     PntController(SecureQSettings *settings, SecureServersRepository *servers, SecureAppSettingsRepository *appSettings,
@@ -29,6 +40,20 @@ public:
     QString status() const;
     QString selectedServer() const;
     QVariantList servers() const;
+    QString vpnAddress() const
+    {
+        return m_vpnAddress;
+    }
+    QString externalAddress() const
+    {
+        return m_externalAddress;
+    }
+    QString handshake() const;
+    QString connectionMode() const;
+    QString received() const;
+    QString sent() const;
+    QString receiveSpeed() const;
+    QString sendSpeed() const;
     Q_INVOKABLE void importProfile(const QUrl &file);
     Q_INVOKABLE void loadServers();
     Q_INVOKABLE void connectServer(const QString &id);
@@ -45,6 +70,8 @@ private:
     void acceptResult(const QJsonObject &result);
     void stopAgent();
     void fail(const QString &message);
+    void refreshStatistics();
+    void refreshExternalAddress();
 
     SecureQSettings *m_settings;
     SecureServersRepository *m_servers;
@@ -62,4 +89,18 @@ private:
     QString m_sessionServer;
     bool m_busy = false;
     bool m_sessionStarted = false;
+    quint64 m_generation = 0;
+    QString m_currentServer;
+    QString m_connectionMode;
+    QString m_vpnAddress;
+    QString m_externalAddress;
+    qint64 m_handshake = 0;
+    quint64 m_received = 0, m_sent = 0, m_previousReceived = 0, m_previousSent = 0;
+    quint64 m_receiveSpeed = 0, m_sendSpeed = 0;
+    QElapsedTimer m_sampleTime;
+    QTimer m_statsTimer;
+    QNetworkAccessManager m_network;
+    int m_statsTick = 0;
+    bool m_statsPending = false;
+    bool m_ipPending = false;
 };

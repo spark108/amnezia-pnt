@@ -79,7 +79,7 @@ private const val CHECK_NOTIFICATION_PERMISSION_ACTION_CODE = 4
 private const val PREFS_NOTIFICATION_PERMISSION_ASKED = "NOTIFICATION_PERMISSION_ASKED"
 private const val OPEN_FILE_AFTER_RESUME_DELAY_MS = 400L
 private const val KEY_PENDING_OPEN_FILE_URI = "pending_open_file_uri"
-private const val FILE_PROVIDER_AUTHORITY = "org.amnezia.vpn.qtprovider"
+private val FILE_PROVIDER_AUTHORITY = "${BuildConfig.APPLICATION_ID}.qtprovider"
 
 class AmneziaActivity : QtActivity() {
 
@@ -125,6 +125,7 @@ class AmneziaActivity : QtActivity() {
                     }
 
                     ServiceEvent.STATISTICS_UPDATE -> {
+                        PntTransport.setConnectionMode(msg.data?.getString("pntMode").orEmpty())
                         msg.data?.getStatistics()?.let { (rxBytes, txBytes) ->
                             QtAndroidController.onStatisticsUpdate(rxBytes, txBytes)
                         }
@@ -219,6 +220,7 @@ class AmneziaActivity : QtActivity() {
     }
 
     private fun loadLibs() {
+        if (BuildConfig.PNT_CLIENT_ONLY) return
         listOf(
             "rsapss"
         ).forEach {
@@ -286,10 +288,12 @@ class AmneziaActivity : QtActivity() {
         resumeHandler.removeCallbacksAndMessages(null)
         openFileDeliveryScheduled = false
         Log.d(TAG, "Stop Amnezia activity")
-        doUnbindService()
-        mainScope.launch {
-            qtInitialized.await()
-            QtAndroidController.onServiceDisconnected()
+        if (!BuildConfig.PNT_CLIENT_ONLY) {
+            doUnbindService()
+            mainScope.launch {
+                qtInitialized.await()
+                QtAndroidController.onServiceDisconnected()
+            }
         }
         super.onStop()
     }
@@ -486,6 +490,7 @@ class AmneziaActivity : QtActivity() {
         // Cancel all pending operations when activity is destroyed
         resumeHandler.removeCallbacksAndMessages(null)
         Log.d(TAG, "Destroy Amnezia activity")
+        if (BuildConfig.PNT_CLIENT_ONLY) doUnbindService()
         unregisterBroadcastReceiver(notificationStateReceiver)
         notificationStateReceiver = null
         mainScope.cancel()

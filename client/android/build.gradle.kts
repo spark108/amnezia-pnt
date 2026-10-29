@@ -37,7 +37,8 @@ android {
     val abiList = qtTargetAbiList.split(",")
 
     defaultConfig {
-        applicationId = "org.amnezia.vpn"
+        buildConfigField("boolean", "PNT_CLIENT_ONLY", (providers.gradleProperty("pntClientOnly").orNull == "true").toString())
+        applicationId = if (providers.gradleProperty("pntClientOnly").orNull == "true") "org.spark108.pntvpn" else "org.amnezia.vpn"
         targetSdk = qtTargetSdkVersion.toInt()
 
         // keeps language resources for only the locales specified below
@@ -87,9 +88,17 @@ android {
     }
 
     sourceSets {
+        getByName("test") {
+            java.setSrcDirs(listOf("test"))
+        }
         getByName("main") {
             manifest.srcFile("AndroidManifest.xml")
             java.setSrcDirs(listOf("src"))
+            if (providers.gradleProperty("pntClientOnly").orNull == "true") {
+                java.srcDir("pntsrc")
+            } else {
+                java.srcDir("standardsrc")
+            }
             res.setSrcDirs(listOf("res"))
             // androyddeployqt creates the folders below
             assets.setSrcDirs(listOf("assets"))
@@ -174,13 +183,17 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20250517")
     implementation(project(":qt"))
     implementation(project(":utils"))
     implementation(project(":protocolApi"))
     implementation(project(":wireguard"))
     implementation(project(":awg"))
-    implementation(project(":openvpn"))
-    implementation(project(":xray"))
+    if (providers.gradleProperty("pntClientOnly").orNull != "true") {
+        implementation(project(":openvpn"))
+        implementation(project(":xray"))
+    }
     implementation(libs.androidx.core)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.fragment)

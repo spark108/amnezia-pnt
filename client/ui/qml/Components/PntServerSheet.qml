@@ -26,7 +26,7 @@ SheetType {
                 required property var modelData
                 width: ListView.view.width
                 text: modelData.name
-                subtitle: qsTr("Напрямую или через PNT при недоступности")
+                subtitle: modelData.ip || ""
                 onClicked: {
                     root.close()
                     PntController.connectServer(modelData.id)

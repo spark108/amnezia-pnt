@@ -492,8 +492,16 @@ void CoreSignalHandlers::initAndroidConnectionHandler()
 {
 #ifdef Q_OS_ANDROID
     connect(AndroidController::instance(), &AndroidController::initConnectionState, this, [this](Vpn::ConnectionState state) {
+#ifdef PNT_CLIENT_ONLY
+        auto vpn = m_coreController->m_vpnConnection;
+        QMetaObject::invokeMethod(vpn.data(), [vpn, state]() {
+            vpn->restoreConnection();
+            if (vpn->vpnProtocol()) vpn->vpnProtocol()->setConnectionState(state);
+        }, Qt::QueuedConnection);
+#else
         m_coreController->m_connectionUiController->onConnectionStateChanged(state);
         m_coreController->m_connectionController->restoreConnection();
+#endif
     });
     connect(AndroidController::instance(), &AndroidController::importConfigFromOutside, this, [this](QString data) {
         emit m_coreController->m_pageController->goToPageHome();

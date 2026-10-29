@@ -72,7 +72,13 @@ open class Wireguard : Protocol() {
             configWireguard(config, configData)
             configSplitTunneling(config)
             configAppSplitTunneling(config)
+            configPntTransport(config)
         }
+    }
+
+    protected fun WireguardConfig.Builder.configPntTransport(config: JSONObject) {
+        val addresses = config.optJSONObject("pnt")?.optJSONArray("controlAddresses") ?: return
+        for (index in 0 until addresses.length()) excludeRoute(InetNetwork.parse(addresses.getString(index)))
     }
 
     protected fun WireguardConfig.Builder.configWireguard(config: JSONObject, configData: JSONObject) {

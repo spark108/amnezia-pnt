@@ -526,6 +526,7 @@ void VpnConnection::appendSplitTunnelingConfig()
 #ifdef Q_OS_ANDROID
 void VpnConnection::restoreConnection()
 {
+    if (!m_vpnProtocol.isNull() && m_vpnProtocol.data() == androidVpnProtocol) return;
     createAndroidConnections();
 
     m_vpnProtocol.reset(androidVpnProtocol);

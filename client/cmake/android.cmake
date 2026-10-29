@@ -3,6 +3,10 @@ message("Client android ${CMAKE_ANDROID_ARCH_ABI} build")
 if(NOT DEFINED APP_ANDROID_MIN_SDK)
     set(APP_ANDROID_MIN_SDK 28)
 endif()
+if(PNT_CLIENT_ONLY)
+    set(APP_ANDROID_MIN_SDK 29)
+    set(CLIENT_ANDROID_PACKAGE "org.spark108.pntvpn" CACHE STRING "PNT Android package" FORCE)
+endif()
 
 # Option to build Play variant (with Google Play Billing) instead of OSS
 # When ON, adds target android_play_apk: cmake --build . --target android_play_apk
@@ -55,6 +59,7 @@ set_property(TARGET ${PROJECT} APPEND PROPERTY QT_ANDROID_EXTRA_LIBS
     ${AMNEZIA_ANDROID_LIBWG_QUICK_PATH}
 )
 
+if(NOT PNT_CLIENT_ONLY)
 find_package(amnezia-libxray REQUIRED)
 file(COPY ${AMNEZIA_LIBXRAY_PATH} DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/android/xray/libXray)
 
@@ -66,8 +71,15 @@ set_property(TARGET ${PROJECT} APPEND PROPERTY QT_ANDROID_EXTRA_LIBS
     ${OPENVPN_PT_ANDROID_LIB_DIR}/libovpnutil.so
     ${OPENVPN_PT_ANDROID_LIB_DIR}/librsapss.so
 )
+endif()
 
 set(APP_ANDROID_PACKAGE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/android)
+if(PNT_CLIENT_ONLY)
+    set(APP_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_BINARY_DIR}/android-pnt-package")
+    file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/android/" DESTINATION "${APP_ANDROID_PACKAGE_SOURCE_DIR}"
+        PATTERN ".gradle" EXCLUDE PATTERN "build" EXCLUDE PATTERN "local.properties" EXCLUDE)
+    file(APPEND "${APP_ANDROID_PACKAGE_SOURCE_DIR}/gradle.properties" "\npntClientOnly=true\n")
+endif()
 
 if(APP_ANDROID_MAX_SDK)
     set(APP_ANDROID_PACKAGE_SOURCE_DIR ${CMAKE_CURRENT_BINARY_DIR}/android-package-source)

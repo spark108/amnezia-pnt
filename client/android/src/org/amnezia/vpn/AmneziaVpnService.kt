@@ -41,6 +41,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.amnezia.vpn.protocol.BadConfigException
+import org.amnezia.vpn.protocol.Statistics
+import org.amnezia.vpn.protocol.putStatistics
 import org.amnezia.vpn.protocol.ProtocolState.CONNECTED
 import org.amnezia.vpn.protocol.ProtocolState.CONNECTING
 import org.amnezia.vpn.protocol.ProtocolState.DISCONNECTED
@@ -98,9 +100,10 @@ open class AmneziaVpnService : VpnService() {
         get() = protocolState.value == UNKNOWN
 
     private var connectionJob: Job? = null
+    private var pntSession: PntVpnSession? = null
     private var disconnectionJob: Job? = null
     private var trafficStatsUpdateJob: Job? = null
-    // private var statisticsSendingJob: Job? = null
+    private var statisticsSendingJob: Job? = null
     private lateinit var networkState: NetworkState
     private lateinit var trafficStats: TrafficStats
     private var controlReceiver: BroadcastReceiver? = null
@@ -113,6 +116,8 @@ open class AmneziaVpnService : VpnService() {
         get() = clientMessengers.any { it.value.name == ACTIVITY_MESSENGER_NAME }
 
     private val connectionExceptionHandler = CoroutineExceptionHandler { _, e ->
+        pntSession?.close()
+        pntSession = null
         connectionJob?.cancel()
         connectionJob = null
         disconnectionJob?.cancel()
@@ -145,13 +150,13 @@ open class AmneziaVpnService : VpnService() {
                         val messenger = IpcMessenger(msg.replyTo, clientName)
                         clientMessengers[msg.replyTo] = messenger
                         Log.d(TAG, "Messenger client '$clientName' was registered")
-                        // if (clientName == ACTIVITY_MESSENGER_NAME && isConnected) launchSendingStatistics()
+                        if (BuildConfig.PNT_CLIENT_ONLY && isActivityConnected) launchSendingStatistics()
                     }
 
                     Action.UNREGISTER_CLIENT -> {
                         clientMessengers.remove(msg.replyTo)?.let {
                             Log.d(TAG, "Messenger client '${it.name}' was unregistered")
-                            // if (it.name == ACTIVITY_MESSENGER_NAME) stopSendingStatistics()
+                            if (!isActivityConnected) stopSendingStatistics()
                         }
                     }
 
@@ -381,26 +386,26 @@ open class AmneziaVpnService : VpnService() {
                 when (protocolState) {
                     CONNECTED -> {
                         networkState.bindNetworkListener()
-                        // if (isActivityConnected) launchSendingStatistics()
+                        if (BuildConfig.PNT_CLIENT_ONLY && isActivityConnected) launchSendingStatistics()
                         launchTrafficStatsUpdate()
                     }
 
                     DISCONNECTED -> {
                         networkState.unbindNetworkListener()
                         stopTrafficStatsUpdateJob()
-                        // stopSendingStatistics()
+                        stopSendingStatistics()
                         if (!isServiceBound) stopService()
                     }
 
                     DISCONNECTING -> {
                         networkState.unbindNetworkListener()
                         stopTrafficStatsUpdateJob()
-                        // stopSendingStatistics()
+                        stopSendingStatistics()
                     }
 
                     RECONNECTING -> {
                         stopTrafficStatsUpdateJob()
-                        // stopSendingStatistics()
+                        stopSendingStatistics()
                     }
 
                     CONNECTING, UNKNOWN -> {}
@@ -409,27 +414,27 @@ open class AmneziaVpnService : VpnService() {
         }
     }
 
-/*  @MainThread
     private fun launchSendingStatistics() {
-        if (isServiceBound && isConnected) {
-            statisticsSendingJob = mainScope.launch {
-                while (true) {
-                    clientMessenger.send {
-                        ServiceEvent.STATISTICS_UPDATE.packToMessage {
-                            putStatistics(protocol?.statistics ?: Statistics.EMPTY_STATISTICS)
-                        }
+        stopSendingStatistics()
+        if (!isActivityConnected || !isConnected) return
+        statisticsSendingJob = mainScope.launch {
+            while (true) {
+                val statistics = vpnProto?.protocol?.statistics ?: Statistics.EMPTY_STATISTICS
+                clientMessengers.send {
+                    ServiceEvent.STATISTICS_UPDATE.packToMessage {
+                        putStatistics(statistics)
+                        putString("pntMode", pntSession?.mode)
                     }
-                    delay(STATISTICS_SENDING_TIMEOUT)
                 }
+                delay(1000)
             }
         }
     }
 
-    @MainThread
     private fun stopSendingStatistics() {
         statisticsSendingJob?.cancel()
-    } */
-
+        statisticsSendingJob = null
+    }
     @MainThread
     private fun enableNotification() {
         registerScreenStateBroadcastReceivers()
@@ -525,7 +530,21 @@ open class AmneziaVpnService : VpnService() {
 
             vpnProto?.protocol?.let { protocol ->
                 protocol.initialize(applicationContext, protocolState, ::onError)
-                protocol.startVpn(config, Builder(), ::protect)
+                try {
+                    config.optJSONObject("pnt")?.let { metadata ->
+                        pntSession?.close()
+                        val session = PntVpnSession(this@AmneziaVpnService, metadata) { message ->
+                            mainScope.launch { onError(message); disconnect() }
+                        }
+                        pntSession = session
+                        session.start(config)
+                    }
+                    protocol.startVpn(config, Builder(), ::protect)
+                } catch (error: Exception) {
+                    pntSession?.close()
+                    pntSession = null
+                    throw IllegalArgumentException(error.message ?: "PNT VPN connection failed", error)
+                }
             }
         }
     }
@@ -543,6 +562,8 @@ open class AmneziaVpnService : VpnService() {
             connectionJob = null
 
             vpnProto?.protocol?.stopVpn()
+            pntSession?.close()
+            pntSession = null
 
             try {
                 withTimeout(DISCONNECT_TIMEOUT) {
@@ -582,6 +603,7 @@ open class AmneziaVpnService : VpnService() {
             }
         }
     }
+
 
     private fun parseConfigToJson(vpnConfig: String): JSONObject? =
         if (vpnConfig.isBlank()) {

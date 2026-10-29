@@ -150,3 +150,5 @@ gwenv.sh
 /deploy/pnt-build/
 /deploy/pnt-dist/
 /deploy/PntVPN-windows-x64.zip
+/deploy/pnt-android-build/
+/deploy/PntVPN-android-arm64.apk

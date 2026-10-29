@@ -237,6 +237,9 @@ void LocalSocketController::activate(const QJsonObject &rawConfig) {
 
   QJsonArray jsExcludedAddresses;
   jsExcludedAddresses.append(wgConfig.value(amnezia::configKey::hostName));
+  for (const auto &address : rawConfig.value("pnt").toObject().value("controlAddresses").toArray()) {
+    if (!jsExcludedAddresses.contains(address)) jsExcludedAddresses.append(address);
+  }
   if (splitTunnelType == 2) {
     for (auto v : splitTunnelSites) {
           QString ipRange = v.toString();
