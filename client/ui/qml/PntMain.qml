@@ -59,13 +59,6 @@ Window {
                 Layout.fillWidth: true
             }
 
-            BodyTextType {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                text: PntController.hasProfile ? qsTr("Профиль доступа добавлен. Выберите конечный сервер при подключении.")
-                                              : qsTr("Импортируйте конфигурацию доступа, выданную администратором PNT.")
-            }
-
             Item { Layout.fillHeight: true }
 
             H2TextType {
@@ -73,6 +66,27 @@ Window {
                 horizontalAlignment: Text.AlignHCenter
                 text: PntController.selectedServer
                 wrapMode: Text.WordWrap
+            }
+
+            ButtonType {
+                objectName: "pntSplitButton"
+                Layout.fillWidth: true
+                variant: ButtonType.Text
+                text: qsTr("Раздельное туннелирование")
+                visible: !ConnectionController.isConnected && !ConnectionController.isConnectionInProgress
+                enabled: !PntController.busy
+                onClicked: splitSettings.open()
+            }
+
+            ButtonType {
+                objectName: "pntResetButton"
+                Layout.fillWidth: true
+                visible: PntController.hasProfile && !ConnectionController.isConnected && !ConnectionController.isConnectionInProgress
+                enabled: !PntController.busy
+                variant: ButtonType.Text
+                destructive: true
+                text: qsTr("Сбросить профиль доступа")
+                onClicked: resetConfirmation.open()
             }
 
             ButtonType {
@@ -98,10 +112,13 @@ Window {
             }
 
             BodyTextType {
+                objectName: "pntConnectionStatus"
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.WordWrap
                 text: root.errorMessage || PntController.status
+                visible: text.length > 0 && text !== qsTr("Отключено") && text !== qsTr("Выберите VPN-сервер")
+                         && text !== qsTr("Профиль PNT импортирован.")
                 Accessible.role: Accessible.StaticText
                 Accessible.name: text
             }
@@ -112,23 +129,6 @@ Window {
             }
 
             Item { Layout.fillHeight: true }
-
-            ButtonType {
-                Layout.fillWidth: true
-                variant: ButtonType.Text
-                text: qsTr("Раздельное туннелирование")
-                enabled: !PntController.busy && !ConnectionController.isConnected && !ConnectionController.isConnectionInProgress
-                onClicked: splitSettings.open()
-            }
-
-            ButtonType {
-                Layout.fillWidth: true
-                visible: PntController.hasProfile
-                enabled: !PntController.busy && !ConnectionController.isConnected && !ConnectionController.isConnectionInProgress
-                variant: ButtonType.Text
-                text: qsTr("Сбросить профиль доступа")
-                onClicked: resetConfirmation.open()
-            }
 
             PntUpdatePanel {
                 Layout.fillWidth: true
@@ -143,12 +143,9 @@ Window {
         onAccepted: PntController.importProfile(selectedFile)
     }
 
-    MessageDialog {
+    PntResetProfileSheet {
         id: resetConfirmation
-        title: qsTr("Сбросить профиль доступа")
-        text: qsTr("Удалить импортированный профиль с этого устройства? Потребуется повторный импорт конфигурации.")
-        buttons: MessageDialog.Yes | MessageDialog.No
-        onButtonClicked: function(button) { if (button === MessageDialog.Yes) PntController.resetProfile() }
+        onConfirmed: PntController.resetProfile()
     }
 
     PntServerSheet { id: serverSheet }

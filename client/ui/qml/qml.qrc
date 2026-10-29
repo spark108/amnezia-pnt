@@ -4,6 +4,7 @@
         <file>Components/PntServerSheet.qml</file>
         <file>Components/PntConnectionStats.qml</file>
         <file>Components/PntUpdatePanel.qml</file>
+        <file>Components/PntResetProfileSheet.qml</file>
         <file>Components/PntSplitTunnelMenu.qml</file>
         <file>Components/PntSplitTunnelSheet.qml</file>
         <file>Components/CopyableValueRow.qml</file>
