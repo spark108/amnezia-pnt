@@ -69,27 +69,6 @@ Window {
             }
 
             ButtonType {
-                objectName: "pntSplitButton"
-                Layout.fillWidth: true
-                variant: ButtonType.Text
-                text: qsTr("Раздельное туннелирование")
-                visible: !ConnectionController.isConnected && !ConnectionController.isConnectionInProgress
-                enabled: !PntController.busy
-                onClicked: splitSettings.open()
-            }
-
-            ButtonType {
-                objectName: "pntResetButton"
-                Layout.fillWidth: true
-                visible: PntController.hasProfile && !ConnectionController.isConnected && !ConnectionController.isConnectionInProgress
-                enabled: !PntController.busy
-                variant: ButtonType.Text
-                destructive: true
-                text: qsTr("Сбросить профиль доступа")
-                onClicked: resetConfirmation.open()
-            }
-
-            ButtonType {
                 Layout.fillWidth: true
                 visible: !PntController.hasProfile
                 text: qsTr("Добавить конфигурацию")
@@ -109,6 +88,27 @@ Window {
                     if (ConnectionController.isConnected || ConnectionController.isConnectionInProgress) PntController.disconnectVpn()
                     else PntController.loadServers()
                 }
+            }
+
+            ButtonType {
+                objectName: "pntSplitButton"
+                Layout.fillWidth: true
+                variant: ButtonType.Text
+                text: qsTr("Раздельное туннелирование")
+                visible: !ConnectionController.isConnected && !ConnectionController.isConnectionInProgress
+                enabled: !PntController.busy
+                onClicked: splitSettings.open()
+            }
+
+            ButtonType {
+                objectName: "pntResetButton"
+                Layout.fillWidth: true
+                visible: PntController.hasProfile && !ConnectionController.isConnected && !ConnectionController.isConnectionInProgress
+                enabled: !PntController.busy
+                variant: ButtonType.Text
+                destructive: true
+                text: qsTr("Сбросить профиль доступа")
+                onClicked: resetConfirmation.open()
             }
 
             BodyTextType {
