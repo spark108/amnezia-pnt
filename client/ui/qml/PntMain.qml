@@ -129,6 +129,10 @@ Window {
                 text: qsTr("Сбросить профиль доступа")
                 onClicked: resetConfirmation.open()
             }
+
+            PntUpdatePanel {
+                Layout.fillWidth: true
+            }
         }
     }
 

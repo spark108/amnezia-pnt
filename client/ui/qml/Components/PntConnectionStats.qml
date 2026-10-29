@@ -8,6 +8,7 @@ ColumnLayout {
     Repeater {
         model: [
             qsTr("Подключение: %1").arg(PntController.connectionMode),
+            qsTr("Пинг: %1").arg(PntController.ping),
             qsTr("IP внутри VPN: %1").arg(PntController.vpnAddress || "—"),
             qsTr("Внешний IP: %1").arg(PntController.externalAddress || qsTr("Проверка…")),
             qsTr("Рукопожатие: %1").arg(PntController.handshake),

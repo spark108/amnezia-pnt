@@ -26,6 +26,7 @@ class PntController : public QObject
     Q_PROPERTY(QString externalAddress READ externalAddress NOTIFY changed)
     Q_PROPERTY(QString handshake READ handshake NOTIFY changed)
     Q_PROPERTY(QString connectionMode READ connectionMode NOTIFY changed)
+    Q_PROPERTY(QString ping READ ping NOTIFY changed)
     Q_PROPERTY(QString received READ received NOTIFY changed)
     Q_PROPERTY(QString sent READ sent NOTIFY changed)
     Q_PROPERTY(QString receiveSpeed READ receiveSpeed NOTIFY changed)
@@ -50,6 +51,7 @@ public:
     }
     QString handshake() const;
     QString connectionMode() const;
+    QString ping() const;
     QString received() const;
     QString sent() const;
     QString receiveSpeed() const;
@@ -72,6 +74,7 @@ private:
     void fail(const QString &message);
     void refreshStatistics();
     void refreshExternalAddress();
+    void refreshPing();
 
     SecureQSettings *m_settings;
     SecureServersRepository *m_servers;
@@ -103,4 +106,7 @@ private:
     int m_statsTick = 0;
     bool m_statsPending = false;
     bool m_ipPending = false;
+    bool m_pingPending = false;
+    QString m_serverHost;
+    qint64 m_serverPing = -1, m_internetPing = -1;
 };

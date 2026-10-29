@@ -79,6 +79,9 @@ if(WIN32 OR (APPLE AND NOT IOS AND NOT MACOS_NE) OR (LINUX AND NOT ANDROID))
     qt_add_repc_replicas(${PROJECT} ${CMAKE_CURRENT_LIST_DIR}/../ipc/ipc_process_interface.rep)
 endif()
 
+if(PNT_CLIENT_ONLY)
+    list(APPEND CLIENT_EXTRA_QRC ${CMAKE_CURRENT_LIST_DIR}/resources/pntUpdate.qrc)
+endif()
 qt6_add_resources(QRC ${QRC}
     ${CMAKE_CURRENT_LIST_DIR}/images/images.qrc
     ${CMAKE_CURRENT_LIST_DIR}/images/flagKit.qrc
@@ -135,6 +138,9 @@ if(PNT_CLIENT_ONLY)
     list(FILTER SOURCES EXCLUDE REGEX "/gatewayController\\.cpp$")
     list(APPEND SOURCES ${CMAKE_CURRENT_LIST_DIR}/core/controllers/pntController.cpp ${CMAKE_CURRENT_LIST_DIR}/core/controllers/pntGatewayController.cpp)
     list(APPEND HEADERS ${CMAKE_CURRENT_LIST_DIR}/core/controllers/pntController.h)
+    list(APPEND SOURCES ${CMAKE_CURRENT_LIST_DIR}/core/controllers/pntUpdateController.cpp)
+    list(APPEND SOURCES ${CMAKE_CURRENT_LIST_DIR}/core/utils/pntLatency.cpp)
+    list(APPEND HEADERS ${CMAKE_CURRENT_LIST_DIR}/core/controllers/pntUpdateController.h)
 endif()
 
 set(_client_include_dirs

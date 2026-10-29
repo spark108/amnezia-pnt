@@ -1,10 +1,12 @@
 #include "pntController.h"
+#include "core/utils/pntLatency.h"
 
 #include "ui/controllers/systemController.h"
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFutureWatcher>
 #include <QHostAddress>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -13,11 +15,10 @@
 #include <QRegularExpression>
 #include <QTimer>
 #include <QUrl>
+#include <QtConcurrent/QtConcurrentRun>
 #include <algorithm>
 #ifdef Q_OS_ANDROID
-    #include <QFutureWatcher>
     #include <QJniObject>
-    #include <QtConcurrent/QtConcurrentRun>
 #endif
 
 PntController::PntController(SecureQSettings *settings, SecureServersRepository *servers,
@@ -34,6 +35,7 @@ PntController::PntController(SecureQSettings *settings, SecureServersRepository 
     m_currentServer = m_settings->value("Pnt/serverId").toString();
     m_selectedServer = m_settings->value("Pnt/serverName").toString();
     m_vpnAddress = m_settings->value("Pnt/vpnAddress").toString();
+    m_serverHost = m_settings->value("Pnt/serverHost").toString();
     m_appSettings->setUseAmneziaDns(false);
     m_appSettings->setPrimaryDns("1.1.1.1");
     m_appSettings->setSecondaryDns("1.0.0.1");
@@ -52,6 +54,8 @@ PntController::PntController(SecureQSettings *settings, SecureServersRepository 
             refreshStatistics();
         if (m_statsTick % 30 == 0)
             refreshExternalAddress();
+        if (m_statsTick % 5 == 0)
+            refreshPing();
         emit changed();
     });
     connect(&m_process, &QProcess::readyReadStandardOutput, this, &PntController::readOutput);
@@ -75,6 +79,7 @@ PntController::PntController(SecureQSettings *settings, SecureServersRepository 
             m_sampleTime.start();
             m_statsTimer.start();
             refreshStatistics();
+            refreshPing();
             QTimer::singleShot(1000, this, &PntController::refreshExternalAddress);
         } else {
             m_statsTimer.stop();
@@ -125,6 +130,34 @@ QString PntController::handshake() const
 {
     return m_handshake > 0 ? tr("%1 сек. назад").arg(qMax<qint64>(0, QDateTime::currentSecsSinceEpoch() - m_handshake))
                            : tr("Ожидание");
+}
+
+QString PntController::ping() const
+{
+    const auto format = [](qint64 value) { return value < 0 ? QString::fromUtf8("—") : QString::number(value) + "ms"; };
+    return format(m_serverPing) + "/" + format(m_internetPing);
+}
+
+void PntController::refreshPing()
+{
+    if (!m_connection->isConnected() || m_pingPending)
+        return;
+    m_pingPending = true;
+    const auto generation = m_generation;
+    const auto host = m_serverHost;
+    auto watcher = new QFutureWatcher<QPair<qint64, qint64>>(this);
+    connect(watcher, &QFutureWatcher<QPair<qint64, qint64>>::finished, this, [this, watcher, generation]() {
+        m_pingPending = false;
+        const auto result = watcher->result();
+        watcher->deleteLater();
+        if (generation != m_generation || !m_connection->isConnected())
+            return;
+        m_serverPing = result.first;
+        m_internetPing = result.second;
+        emit changed();
+    });
+    watcher->setFuture(QtConcurrent::run(
+            [host]() { return QPair<qint64, qint64> { PntLatency::measure(host), PntLatency::measure("1.1.1.1") }; }));
 }
 QString PntController::connectionMode() const
 {
@@ -244,6 +277,9 @@ void PntController::connectServer(const QString &id)
     if (found == m_catalog.cend())
         return;
     m_selectedServer = found->toMap().value("name").toString();
+    m_serverHost = found->toMap().value("ip").toString();
+    m_settings->setValue("Pnt/serverHost", m_serverHost);
+    m_serverPing = m_internetPing = -1;
     m_currentServer = id;
     m_connectionMode = "direct";
     m_settings->setValue("Pnt/serverId", id);
@@ -395,6 +431,8 @@ void PntController::acceptResult(const QJsonObject &result)
         m_status = m_catalog.isEmpty() ? tr("Для этого профиля нет доступных VPN-серверов.") : tr("Выберите VPN-сервер");
         emit serversReady();
     } else if (m_action == "connect" && result.contains("config")) {
+        m_serverHost = result.value("host").toString();
+        m_settings->setValue("Pnt/serverHost", m_serverHost);
         const auto match =
                 QRegularExpression("(?m)^Address\\s*=\\s*([^\\r\\n]+)").match(result.value("config").toString());
         m_vpnAddress = match.hasMatch() ? match.captured(1).trimmed() : QString();

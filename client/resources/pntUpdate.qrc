@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/pnt">
+        <file alias="update-windows.ps1">../../deploy/pnt-update-windows.ps1</file>
+    </qresource>
+</RCC>

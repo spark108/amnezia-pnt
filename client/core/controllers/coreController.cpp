@@ -13,7 +13,8 @@
 #include "secureQSettings.h"
 #include "core/utils/appUiConfig.h"
 #ifdef PNT_CLIENT_ONLY
-#include "pntController.h"
+    #include "pntController.h"
+    #include "pntUpdateController.h"
 #endif
 
 #if defined(Q_OS_ANDROID)
@@ -260,8 +261,15 @@ void CoreController::initControllers()
     m_updateUiController = new UpdateUiController(m_updateController, this);
     setQmlContextProperty("UpdateController", m_updateUiController);
 #ifdef PNT_CLIENT_ONLY
-    setQmlContextProperty("PntController", new PntController(m_settings, m_serversRepository, m_appSettingsRepository,
-                                                          m_importCoreController, m_connectionController, this));
+    setQmlContextProperty("PntController",
+                          new PntController(m_settings, m_serversRepository, m_appSettingsRepository,
+                                            m_importCoreController, m_connectionController, this));
+    auto pntUpdater = new PntUpdateController(this);
+    setQmlContextProperty("PntUpdateController", pntUpdater);
+    connect(m_connectionController, &ConnectionController::connectionStateChanged, pntUpdater,
+            [pntUpdater](Vpn::ConnectionState state) {
+                pntUpdater->setVpnActive(state != Vpn::Disconnected && state != Vpn::Error && state != Vpn::Unknown);
+            });
 #endif
 }
 

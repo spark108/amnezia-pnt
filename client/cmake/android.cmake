@@ -79,6 +79,11 @@ if(PNT_CLIENT_ONLY)
     file(COPY "${CMAKE_CURRENT_SOURCE_DIR}/android/" DESTINATION "${APP_ANDROID_PACKAGE_SOURCE_DIR}"
         PATTERN ".gradle" EXCLUDE PATTERN "build" EXCLUDE PATTERN "local.properties" EXCLUDE)
     file(APPEND "${APP_ANDROID_PACKAGE_SOURCE_DIR}/gradle.properties" "\npntClientOnly=true\n")
+    set(pnt_manifest "${APP_ANDROID_PACKAGE_SOURCE_DIR}/AndroidManifest.xml")
+    file(READ "${pnt_manifest}" pnt_manifest_contents)
+    string(REPLACE "<application" "<uses-permission android:name=\"android.permission.REQUEST_INSTALL_PACKAGES\" />\n    <application"
+        pnt_manifest_contents "${pnt_manifest_contents}")
+    file(WRITE "${pnt_manifest}" "${pnt_manifest_contents}")
 endif()
 
 if(APP_ANDROID_MAX_SDK)
