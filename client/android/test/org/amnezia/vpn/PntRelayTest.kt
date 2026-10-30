@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class PntRelayTest {
     private class Link(override val nodeId: String) : PntRelayLink {
+        @Volatile var silent = false
         private val packets = LinkedBlockingQueue<ByteArray>()
         private val closed = AtomicBoolean(false)
         override fun sendPacket(data: ByteArray, size: Int) {
@@ -23,6 +24,25 @@ class PntRelayTest {
             return packet
         }
         override fun close() { if (!closed.getAndSet(true)) packets.offer(ByteArray(0)) }
+        override fun checkHealth() { if (silent) throw IOException("Exit heartbeat timed out") }
+    }
+
+    @Test fun silentActiveRelayPromotesStandbyWithoutSocketEof() {
+        val links = CopyOnWriteArrayList<Link>()
+        val received = LinkedBlockingQueue<ByteArray>()
+        val changes = AtomicInteger()
+        val relay = PntRelay({ avoid -> Link(if (avoid == "primary") "backup" else "primary").also { links.add(it) } },
+            { received.offer(it) }, { changes.incrementAndGet() })
+        relay.start()
+        try {
+            relay.enable(byteArrayOf(1))
+            assertArrayEquals(byteArrayOf(1), received.poll(5, TimeUnit.SECONDS))
+            await { links.size >= 2 }
+            links.first().silent = true
+            await { changes.get() >= 2 }
+            relay.send(byteArrayOf(2))
+            assertArrayEquals(byteArrayOf(2), received.poll(5, TimeUnit.SECONDS))
+        } finally { relay.close() }
     }
 
     private fun await(condition: () -> Boolean) {

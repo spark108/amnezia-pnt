@@ -10,6 +10,7 @@ interface PntRelayLink : Closeable {
     val nodeId: String
     fun sendPacket(data: ByteArray, size: Int)
     fun receivePacket(): ByteArray
+    fun checkHealth() {}
 }
 
 class PntRelay(
@@ -58,6 +59,8 @@ class PntRelay(
     fun start() {
         launch {
             while (running.get()) {
+                val links = synchronized(gate) { listOfNotNull(active, standby) }
+                links.forEach { link -> try { link.checkHealth() } catch (_: Exception) { remove(link) } }
                 val state = synchronized(gate) { active to standby }
                 if (enabled && (state.first == null || state.second == null)) {
                     var link = runCatching { connect(state.first?.nodeId ?: failed) }.getOrNull()
