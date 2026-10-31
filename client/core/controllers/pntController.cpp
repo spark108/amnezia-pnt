@@ -256,7 +256,10 @@ void PntController::refreshStatistics()
     m_statsPending = true;
     const auto generation = m_generation;
     const auto payload = QString::fromUtf8(
-            QJsonDocument(QJsonObject { { "action", "stats" }, { "profile", m_profile }, { "server", m_currentServer } })
+            QJsonDocument(QJsonObject { { "action", "stats" },
+                                        { "profile", m_profile },
+                                        { "server", m_currentServer },
+                                        { "deviceEpoch", m_settings->value("Pnt/deviceEpoch").toString() } })
                     .toJson(QJsonDocument::Compact));
     auto watcher = new QFutureWatcher<QString>(this);
     connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher, generation]() {
@@ -490,6 +493,8 @@ void PntController::acceptResult(const QJsonObject &result)
         QJsonObject metadata { { "server", result.value("server") }, { "controlAddresses", bypass } };
 #ifdef Q_OS_ANDROID
         metadata["profile"] = m_profile;
+        metadata["deviceEpoch"] = result.value("deviceEpoch");
+        m_settings->setValue("Pnt/deviceEpoch", result.value("deviceEpoch").toString());
 #endif
         imported.config["pnt"] = metadata;
         m_sessionServer = m_servers->addServer({ }, imported.config, serverConfigUtils::Native);
