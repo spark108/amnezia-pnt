@@ -26,7 +26,8 @@ SheetType {
                 required property var modelData
                 width: ListView.view.width
                 text: modelData.name
-                subtitle: modelData.ip || ""
+                subtitle: (modelData.ip || "—") + " · "
+                          + (modelData.pingMs >= 0 ? qsTr("%1 ms").arg(modelData.pingMs) : "—")
                 onClicked: {
                     root.close()
                     PntController.connectServer(modelData.id)

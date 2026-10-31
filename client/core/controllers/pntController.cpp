@@ -169,6 +169,33 @@ void PntController::refreshPing()
     watcher->setFuture(QtConcurrent::run(
             [host]() { return QPair<qint64, qint64> { PntLatency::measure(host), PntLatency::measure("1.1.1.1") }; }));
 }
+void PntController::refreshCatalogPings()
+{
+    const auto generation = ++m_catalogGeneration;
+    for (const auto &item : m_catalog) {
+        const auto server = item.toMap();
+        const auto id = server.value("id").toString();
+        const auto host = server.value("ip").toString();
+        auto watcher = new QFutureWatcher<qint64>(this);
+        connect(watcher, &QFutureWatcher<qint64>::finished, this, [this, watcher, generation, id]() {
+            const auto ping = watcher->result();
+            watcher->deleteLater();
+            if (generation != m_catalogGeneration)
+                return;
+            for (auto &item : m_catalog) {
+                auto server = item.toMap();
+                if (server.value("id").toString() == id) {
+                    server["pingMs"] = ping;
+                    item = server;
+                    emit changed();
+                    break;
+                }
+            }
+        });
+        watcher->setFuture(QtConcurrent::run([host]() { return PntLatency::measure(host); }));
+    }
+}
+
 QString PntController::connectionMode() const
 {
     auto mode = m_connectionMode;
@@ -323,6 +350,7 @@ void PntController::resetProfile()
     m_settings->remove("Pnt/serverName");
     m_settings->remove("Pnt/vpnAddress");
     m_profile = { };
+    ++m_catalogGeneration;
     m_catalog.clear();
     m_selectedServer.clear();
     m_currentServer.clear();
@@ -437,10 +465,12 @@ void PntController::acceptResult(const QJsonObject &result)
                     break;
                 }
             }
+            server["pingMs"] = -1;
             m_catalog.append(server.toVariantMap());
         }
         m_status = m_catalog.isEmpty() ? tr("Для этого профиля нет доступных VPN-серверов.") : tr("Выберите VPN-сервер");
         emit serversReady();
+        refreshCatalogPings();
     } else if (m_action == "connect" && result.contains("config")) {
         m_serverHost = result.value("host").toString();
         m_settings->setValue("Pnt/serverHost", m_serverHost);

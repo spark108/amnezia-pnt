@@ -75,6 +75,7 @@ private:
     void refreshStatistics();
     void refreshExternalAddress();
     void refreshPing();
+    void refreshCatalogPings();
 
     SecureQSettings *m_settings;
     SecureServersRepository *m_servers;
@@ -86,6 +87,7 @@ private:
     QJsonObject m_profile;
     QJsonObject m_pendingProfile;
     QVariantList m_catalog;
+    quint64 m_catalogGeneration = 0;
     QString m_action;
     QString m_status;
     QString m_selectedServer;
