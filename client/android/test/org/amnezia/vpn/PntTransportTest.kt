@@ -9,6 +9,16 @@ import org.junit.Test
 import java.io.File
 
 class PntTransportTest {
+    @Test fun dotnetSignaturesCoverLocationNullsFractionsAndLegacyProfiles() {
+        val profiles = JSONObject(ProfileSignatureFixtures.json)
+        for (name in profiles.keys()) PntTransport.verifyProfileSignature(profiles.getJSONObject(name))
+        val modified = profiles.getJSONObject("fractional")
+        modified.getJSONArray("entrypoints").getJSONObject(0).getJSONObject("location").put("latitude", 1.25)
+        var rejected = false
+        try { PntTransport.verifyProfileSignature(modified) } catch (_: IllegalArgumentException) { rejected = true }
+        assertTrue("Changed location retained a valid signature", rejected)
+    }
+
     @Test fun deviceProofCoversNonceClientTaskAndSession() {
         val payload = PntTransport.devicePayload("nonce", "client", "stats", "exit", "epoch")
         assertEquals("PNT device binding v1\nnonce\nclient\nstats\nexit\nepoch", String(payload, Charsets.UTF_8))

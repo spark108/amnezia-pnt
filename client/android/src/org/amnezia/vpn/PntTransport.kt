@@ -6,6 +6,7 @@ import java.io.ByteArrayInputStream
 import java.io.Closeable
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.math.BigDecimal
 import java.math.BigInteger
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -86,19 +87,35 @@ object PntTransport {
         append('"')
     }
 
+    private fun number(value: Number): String {
+        if (value is Byte || value is Short || value is Int || value is Long || value is BigInteger) return value.toString()
+        require(value.toDouble().isFinite()) { "Invalid PNT profile number" }
+        val decimal = BigDecimal(value.toString()).stripTrailingZeros()
+        if (decimal.signum() == 0) return if (java.lang.Double.doubleToRawLongBits(value.toDouble()) < 0) "-0" else "0"
+        val exponent = decimal.precision() - decimal.scale() - 1
+        if (exponent in -4..16) return decimal.toPlainString()
+        val digits = decimal.unscaledValue().abs().toString()
+        val fraction = if (digits.length > 1) "." + digits.drop(1) else ""
+        return (if (decimal.signum() < 0) "-" else "") + digits.first() + fraction + "E" +
+            (if (exponent < 0) "-" else "+") + kotlin.math.abs(exponent).toString().padStart(2, '0')
+    }
+
     private fun canonical(value: Any, fields: List<String>? = null): String = when (value) {
         is JSONObject -> {
             val order = fields ?: when {
                 value.has("format") -> listOf("format", "cluster", "clientId", "identity", "entrypoints", "servers", "issuer", "signature")
-                value.has("ip") -> listOf("id", "name", "ip", "cert", "version", "removed", "updating", "updatingSince", "behindNat", "platform")
+                value.has("cert") && value.has("ip") -> listOf("id", "name", "ip", "cert", "version", "removed", "updating", "updatingSince", "behindNat", "platform") +
+                    if (value.has("location")) listOf("location") else emptyList()
+                value.has("latitude") -> listOf("latitude", "longitude", "manual", "city", "country", "ip", "updated")
                 else -> listOf("id", "name", "version", "removed")
             }
             order.joinToString(",", "{", "}") { key -> quoted(key) + ":" + if (key == "signature") "\"\"" else canonical(value.get(key)) }
         }
         is JSONArray -> (0 until value.length()).joinToString(",", "[", "]") { canonical(value.get(it)) }
         is String -> quoted(value)
-        is Number -> value.toLong().toString()
+        is Number -> number(value)
         is Boolean -> value.toString()
+        JSONObject.NULL -> "null"
         else -> throw IllegalArgumentException("Invalid PNT profile field")
     }
 
@@ -106,7 +123,7 @@ object PntTransport {
         load(ByteArrayInputStream(bytes(profile.getString("identity"))), CharArray(0))
     }
 
-    fun validate(profile: JSONObject) {
+    internal fun verifyProfileSignature(profile: JSONObject) {
         require(profile.getInt("format") == 1) { "Unsupported PNT profile version" }
         require(profile.getJSONArray("entrypoints").length() in 1..1024) { "Invalid bootstrap nodes" }
         val issuer = CertificateFactory.getInstance("X.509").generateCertificate(ByteArrayInputStream(bytes(profile.getString("issuer")))) as X509Certificate
@@ -120,6 +137,10 @@ object PntTransport {
         verifier.initVerify(issuer.publicKey)
         verifier.update(canonical(profile).toByteArray(Charsets.UTF_8))
         require(verifier.verify(byteArrayOf(0x30, integers.size.toByte()) + integers)) { "PNT profile signature verification failed" }
+    }
+
+    fun validate(profile: JSONObject) {
+        verifyProfileSignature(profile)
         val store = identity(profile)
         val alias = store.aliases().asSequence().first { store.isKeyEntry(it) }
         val certificate = store.getCertificate(alias) as X509Certificate
