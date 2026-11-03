@@ -19,6 +19,19 @@ class PntTransportTest {
         assertTrue("Changed location retained a valid signature", rejected)
     }
 
+    @Test fun relayPolicyIsCoveredByTheProfileSignature() {
+        val profiles = JSONObject(ProfileSignatureFixtures.json)
+        for (name in listOf("relayEnabled", "relayDisabled", "relayWithoutLocation")) {
+            val profile = profiles.getJSONObject(name)
+            PntTransport.verifyProfileSignature(profile)
+            val node = profile.getJSONArray("entrypoints").getJSONObject(0)
+            node.put("relayEnabled", !node.getBoolean("relayEnabled"))
+            var rejected = false
+            try { PntTransport.verifyProfileSignature(profile) } catch (_: IllegalArgumentException) { rejected = true }
+            assertTrue("Changed relay policy retained a valid signature", rejected)
+        }
+    }
+
     @Test fun deviceProofCoversNonceClientTaskAndSession() {
         val payload = PntTransport.devicePayload("nonce", "client", "stats", "exit", "epoch")
         assertEquals("PNT device binding v1\nnonce\nclient\nstats\nexit\nepoch", String(payload, Charsets.UTF_8))

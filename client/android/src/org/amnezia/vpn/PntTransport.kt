@@ -105,7 +105,8 @@ object PntTransport {
             val order = fields ?: when {
                 value.has("format") -> listOf("format", "cluster", "clientId", "identity", "entrypoints", "servers", "issuer", "signature")
                 value.has("cert") && value.has("ip") -> listOf("id", "name", "ip", "cert", "version", "removed", "updating", "updatingSince", "behindNat", "platform") +
-                    if (value.has("location")) listOf("location") else emptyList()
+                    (if (value.has("location")) listOf("location") else emptyList()) +
+                    (if (value.has("relayEnabled")) listOf("relayEnabled") else emptyList())
                 value.has("latitude") -> listOf("latitude", "longitude", "manual", "city", "country", "ip", "updated")
                 else -> listOf("id", "name", "version", "removed")
             }
