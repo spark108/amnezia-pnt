@@ -28,6 +28,7 @@ public:
 private:
 
     QScopedPointer<ControllerImpl> m_impl;
+    QTimer m_statusTimer;
 };
 
 #endif // WIREGUARDPROTOCOL_H

@@ -13,6 +13,15 @@ WireguardProtocol::WireguardProtocol(const QJsonObject &configuration, QObject *
     : VpnProtocol(configuration, parent)
 {
     m_impl.reset(new LocalSocketController());
+    m_statusTimer.setInterval(1000);
+    connect(&m_statusTimer, &QTimer::timeout, this, [this]() { m_impl->checkStatus(); });
+    connect(this, &VpnProtocol::connectionStateChanged, this, [this](Vpn::ConnectionState state) {
+        if (state == Vpn::Connected) {
+            m_statusTimer.start();
+        } else {
+            m_statusTimer.stop();
+        }
+    });
     connect(m_impl.get(), &ControllerImpl::connected, this,
             [this](const QString &pubkey, const QDateTime &connectionTimestamp) {
                 setConnectionState(Vpn::ConnectionState::Connected);
@@ -51,6 +60,7 @@ WireguardProtocol::~WireguardProtocol()
 
 void WireguardProtocol::stop()
 {
+    m_statusTimer.stop();
     if (guardStop()) {
         return;
     }
