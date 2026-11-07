@@ -297,6 +297,7 @@ void PntController::importProfile(const QUrl &url)
         fail(tr("Некорректный профиль PNT."));
         return;
     }
+    m_pendingProfile.remove("discoveredEntrypoints");
     start("import");
 }
 
@@ -458,6 +459,18 @@ void PntController::acceptResult(const QJsonObject &result)
         }
         m_status = tr("Профиль PNT импортирован.");
     } else if (m_action == "catalog") {
+        const auto entrypoints = result.value("entrypoints").toArray();
+        if (!entrypoints.isEmpty()) {
+            auto profile = m_profile;
+            profile["discoveredEntrypoints"] = entrypoints;
+            const auto data = QJsonDocument(profile).toJson(QJsonDocument::Compact);
+            m_settings->setValue("Pnt/profile", data);
+            if (m_settings->value("Pnt/profile").toByteArray() != data) {
+                fail(tr("Не удалось сохранить профиль в защищённом хранилище устройства."));
+                return;
+            }
+            m_profile = profile;
+        }
         m_catalog.clear();
         const auto nodes = result.value("nodes").toArray();
         for (const auto &item : result.value("servers").toArray()) {

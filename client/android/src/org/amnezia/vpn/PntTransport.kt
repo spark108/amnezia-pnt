@@ -120,6 +120,26 @@ object PntTransport {
         else -> throw IllegalArgumentException("Invalid PNT profile field")
     }
 
+    internal fun validateEntrypoints(nodes: JSONArray): JSONArray {
+        require(nodes.length() in 1..1024) { "Invalid PNT entrypoints" }
+        val ids = mutableSetOf<String>()
+        for (index in 0 until nodes.length()) {
+            val node = nodes.getJSONObject(index)
+            val ip = node.getString("ip")
+            require(!node.optBoolean("removed") && node.getString("id").isNotEmpty() && ids.add(node.getString("id")) &&
+                node.getString("cert").matches(Regex("[0-9a-fA-F]{64}")) &&
+                ip.isNotEmpty() && ip.all { it in "0123456789abcdefABCDEF:." } &&
+                (ip.contains(':') || ip.split('.').let { parts -> parts.size == 4 && parts.all { it.toIntOrNull() in 0..255 } })) {
+                "Invalid PNT entrypoint"
+            }
+            require(InetAddress.getByName(ip).hostAddress != null) { "Invalid PNT entrypoint address" }
+        }
+        return nodes
+    }
+
+    internal fun entrypoints(profile: JSONObject): JSONArray =
+        profile.optJSONArray("discoveredEntrypoints")?.let { validateEntrypoints(it) } ?: profile.getJSONArray("entrypoints")
+
     private fun identity(profile: JSONObject): KeyStore = KeyStore.getInstance("PKCS12").apply {
         load(ByteArrayInputStream(bytes(profile.getString("identity"))), CharArray(0))
     }
@@ -182,7 +202,7 @@ object PntTransport {
         val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(timeoutMillis.toLong())
         val store = identity(profile)
         val managers = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply { init(store, CharArray(0)) }
-        val nodes = profile.getJSONArray("entrypoints")
+        val nodes = entrypoints(profile)
         var last: Exception? = null
         val offset = if (action == "udp") Math.floorMod(relayCursor.incrementAndGet(), nodes.length()) else 0
         for (position in 0 until nodes.length()) {
@@ -261,7 +281,9 @@ object PntTransport {
             "catalog" -> {
                 val reply = request(profile, "catalog", null)
                 JSONObject().put("ok", true).put("servers", reply.optJSONArray("vpnServers") ?: JSONArray())
-                    .put("nodes", reply.optJSONArray("nodes") ?: JSONArray()).put("clientId", profile.getString("clientId"))
+                    .put("nodes", reply.optJSONArray("nodes") ?: JSONArray()).put("clientId", profile.getString("clientId")).apply {
+                        reply.optJSONArray("entrypoints")?.let { put("entrypoints", validateEntrypoints(it)) }
+                    }
             }
             "stats" -> JSONObject(request(profile, "stats", input.getString("server"), epoch = input.optString("deviceEpoch").ifEmpty { null }).getString("vpnPayload"))
             "connect" -> {
@@ -269,7 +291,7 @@ object PntTransport {
                 val response = request(profile, "ensure", server)
                 val reply = JSONObject(response.getString("vpnPayload")).put("deviceEpoch", response.getString("deviceEpoch"))
                 reply.put("ok", true).put("server", server).put("entrypoints", JSONArray().apply {
-                    val nodes = profile.getJSONArray("entrypoints")
+                    val nodes = entrypoints(profile)
                     for (i in 0 until nodes.length()) put(nodes.getJSONObject(i).getString("ip"))
                 })
             }
@@ -290,7 +312,7 @@ class PntVpnSession(private val service: android.net.VpnService, private val met
     private val local = DatagramSocket(0, InetAddress.getByName("127.0.0.1"))
     private var direct: DatagramSocket? = null
     private val relay = PntRelay({ avoid ->
-        val nodes = profile.getJSONArray("entrypoints")
+        val nodes = PntTransport.entrypoints(profile)
         if ((0 until nodes.length()).none { !nodes.getJSONObject(it).optBoolean("removed") && nodes.getJSONObject(it).optString("id") != avoid }) null
         else PntTransport.open(profile, "udp", server, { service.protect(it) }, avoid, 8000, deviceEpoch).first
     }, { packet ->

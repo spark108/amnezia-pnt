@@ -9,6 +9,20 @@ import org.junit.Test
 import java.io.File
 
 class PntTransportTest {
+    @Test fun discoveredEntrypointsSurviveReloadWithoutChangingSignedBootstrap() {
+        val profile = JSONObject(JSONObject(ProfileSignatureFixtures.json).getJSONObject("fractional").toString())
+        val bootstrap = profile.getJSONArray("entrypoints").toString()
+        val node = JSONObject(profile.getJSONArray("entrypoints").getJSONObject(0).toString())
+            .put("id", "new-entry").put("ip", "127.0.0.2").put("removed", false)
+        profile.put("discoveredEntrypoints", org.json.JSONArray().put(node))
+        val restored = JSONObject(profile.toString())
+        PntTransport.verifyProfileSignature(restored)
+        assertEquals(bootstrap, restored.getJSONArray("entrypoints").toString())
+        assertEquals("new-entry", PntTransport.entrypoints(restored).getJSONObject(0).getString("id"))
+        restored.remove("discoveredEntrypoints")
+        assertEquals(bootstrap, PntTransport.entrypoints(restored).toString())
+    }
+
     @Test fun dotnetSignaturesCoverLocationNullsFractionsAndLegacyProfiles() {
         val profiles = JSONObject(ProfileSignatureFixtures.json)
         for (name in profiles.keys()) PntTransport.verifyProfileSignature(profiles.getJSONObject(name))
@@ -29,6 +43,19 @@ class PntTransportTest {
             var rejected = false
             try { PntTransport.verifyProfileSignature(profile) } catch (_: IllegalArgumentException) { rejected = true }
             assertTrue("Changed relay policy retained a valid signature", rejected)
+        }
+    }
+
+    @Test fun invalidDiscoveredEntrypointsAreRejected() {
+        val valid = JSONObject().put("id", "entry").put("ip", "127.0.0.2").put("cert", "A".repeat(64))
+        val invalid = listOf(org.json.JSONArray(), org.json.JSONArray().put(valid).put(valid),
+            org.json.JSONArray().put(JSONObject(valid.toString()).put("removed", true)),
+            org.json.JSONArray().put(JSONObject(valid.toString()).put("cert", "Z".repeat(64))),
+            org.json.JSONArray().put(JSONObject(valid.toString()).put("ip", "999.0.0.1")))
+        for (nodes in invalid) {
+            var rejected = false
+            try { PntTransport.validateEntrypoints(nodes) } catch (_: IllegalArgumentException) { rejected = true }
+            assertTrue("Invalid discovery was accepted", rejected)
         }
     }
 
