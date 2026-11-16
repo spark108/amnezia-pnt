@@ -7,24 +7,30 @@ SheetType {
     id: root
     expandedHeight: windowHeight - 24
 
-    onClosed: settingsStack.pop(null, StackView.Immediate)
-
-    StackView {
-        id: settingsStack
+    Loader {
+        id: settings
         anchors.fill: parent
-        initialItem: PntSplitTunnelMenu { onCloseRequested: root.close() }
+        active: root.visible
+
+        sourceComponent: StackView {
+            initialItem: PntSplitTunnelMenu { onCloseRequested: root.close() }
+        }
     }
 
     Connections {
         target: PageController
-        enabled: root.visible
-        function onClosePage() {
-            if (settingsStack.depth > 1) settingsStack.pop()
+        enabled: root.visible && settings.item !== null
+
+        function goBack() {
+            if (settings.item.depth > 1) settings.item.popCurrentItem()
             else root.close()
         }
+
+        function onClosePage() {
+            goBack()
+        }
         function onEscapePressed() {
-            if (settingsStack.depth > 1) settingsStack.pop()
-            else root.close()
+            goBack()
         }
     }
 

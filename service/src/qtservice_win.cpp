@@ -614,11 +614,11 @@ void WINAPI QtServiceSysPrivate::handler( DWORD code )
         instance->setStatus(SERVICE_RUNNING);
         break;
     case SERVICE_CONTROL_STOP: // 1
+        instance->status.dwWaitHint = 30000;
         instance->setStatus(SERVICE_STOP_PENDING);
         QCoreApplication::postEvent(instance->controllerHandler, new QEvent(QEvent::Type(QEvent::User + code)));
-        instance->condition.wait(&instance->mutex);
-        // status will be reported as stopped by start() when qapp::exec returns
-        break;
+        instance->mutex.unlock();
+        return;
 
     case SERVICE_CONTROL_PAUSE: // 2
         instance->setStatus(SERVICE_PAUSE_PENDING);
@@ -839,6 +839,7 @@ bool QtServiceBasePrivate::start()
     sys->startSemaphore2.release(); // let serviceMain continue (and end)
 
     sys->status.dwWin32ExitCode = q_ptr->executeApplication();
+    sys->status.dwWaitHint = 0;
     sys->setStatus(SERVICE_STOPPED);
 
     if (ht->isRunning())

@@ -7,6 +7,8 @@
         <file>Components/PntResetProfileSheet.qml</file>
         <file>Components/PntSplitTunnelMenu.qml</file>
         <file>Components/PntSplitTunnelSheet.qml</file>
+        <file>Components/PntNotificationButton.qml</file>
+        <file>Components/PntNotificationsSheet.qml</file>
         <file>Components/CopyableValueRow.qml</file>
         <file>Components/ConfigContentSheet.qml</file>
         <file>Components/QrCodeCard.qml</file>

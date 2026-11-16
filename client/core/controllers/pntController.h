@@ -31,6 +31,9 @@ class PntController : public QObject
     Q_PROPERTY(QString sent READ sent NOTIFY changed)
     Q_PROPERTY(QString receiveSpeed READ receiveSpeed NOTIFY changed)
     Q_PROPERTY(QString sendSpeed READ sendSpeed NOTIFY changed)
+    Q_PROPERTY(QVariantList notifications READ notifications NOTIFY notificationsChanged)
+    Q_PROPERTY(int unreadNotifications READ unreadNotifications NOTIFY notificationsChanged)
+    Q_PROPERTY(QString notificationsStatus READ notificationsStatus NOTIFY notificationsChanged)
 
 public:
     PntController(SecureQSettings *settings, SecureServersRepository *servers, SecureAppSettingsRepository *appSettings,
@@ -56,6 +59,10 @@ public:
     QString sent() const;
     QString receiveSpeed() const;
     QString sendSpeed() const;
+    QVariantList notifications() const { return m_notifications; }
+    int unreadNotifications() const;
+    QString notificationsStatus() const { return m_notificationsStatus; }
+    Q_INVOKABLE void setNotificationsOpen(bool open);
     Q_INVOKABLE void importProfile(const QUrl &file);
     Q_INVOKABLE void loadServers();
     Q_INVOKABLE void connectServer(const QString &id);
@@ -65,6 +72,7 @@ public:
 signals:
     void changed();
     void serversReady();
+    void notificationsChanged();
 
 private:
     void start(const QString &action, const QString &server = { });
@@ -76,6 +84,11 @@ private:
     void refreshExternalAddress();
     void refreshPing();
     void refreshCatalogPings();
+    QString notificationsKey() const;
+    void loadNotifications();
+    void refreshNotifications();
+    void acceptNotifications(const QString &key, const QByteArray &response);
+    void saveNotifications();
 
     SecureQSettings *m_settings;
     SecureServersRepository *m_servers;
@@ -104,6 +117,12 @@ private:
     quint64 m_receiveSpeed = 0, m_sendSpeed = 0;
     QElapsedTimer m_sampleTime;
     QTimer m_statsTimer;
+    QTimer m_notificationsTimer;
+    QVariantList m_notifications;
+    QString m_notificationsCursor;
+    QString m_notificationsStatus;
+    bool m_notificationsPending = false;
+    bool m_notificationsOpen = false;
     QNetworkAccessManager m_network;
     int m_statsTick = 0;
     bool m_statsPending = false;

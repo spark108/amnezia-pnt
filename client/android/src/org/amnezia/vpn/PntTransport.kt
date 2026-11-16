@@ -286,6 +286,7 @@ object PntTransport {
                     }
             }
             "stats" -> JSONObject(request(profile, "stats", input.getString("server"), epoch = input.optString("deviceEpoch").ifEmpty { null }).getString("vpnPayload"))
+            "notifications" -> JSONObject(request(profile, "notifications", input.optString("cursor").ifEmpty { null }).getString("vpnPayload"))
             "connect" -> {
                 val server = input.getString("server")
                 val response = request(profile, "ensure", server)

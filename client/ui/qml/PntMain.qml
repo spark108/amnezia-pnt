@@ -16,6 +16,10 @@ Window {
     height: 800
     minimumWidth: 360
     minimumHeight: 540
+    flags: Qt.platform.os === "windows"
+           ? Qt.Window | Qt.CustomizeWindowHint | Qt.WindowTitleHint | Qt.WindowSystemMenuHint
+             | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint
+           : Qt.Window
     title: qsTr("PNT VPN")
     color: AmneziaStyle.color.bgBase
 
@@ -29,6 +33,7 @@ Window {
     Connections {
         target: PageController
         function onRaiseMainWindow() { root.show(); root.raise(); root.requestActivate() }
+        function onHideMainWindow() { root.hide() }
         function onShowErrorMessage(message) { root.errorMessage = message }
         function onShowNotificationMessage(message) { notification.show(message) }
         function onShowBusyIndicator(visible) { loading.visible = visible }
@@ -55,9 +60,19 @@ Window {
             height: scroll.contentHeight - 56
             spacing: 20
 
-            H1TextType {
-                text: qsTr("PNT VPN")
+            RowLayout {
                 Layout.fillWidth: true
+
+                H1TextType {
+                    Layout.fillWidth: true
+                    text: qsTr("PNT VPN")
+                }
+
+                PntNotificationButton {
+                    visible: PntController.hasProfile
+                    unreadCount: PntController.unreadNotifications
+                    onClicked: notificationsSheet.open()
+                }
             }
 
             Item { Layout.fillHeight: true }
@@ -157,6 +172,7 @@ Window {
 
     PntServerSheet { id: serverSheet }
     PntSplitTunnelSheet { id: splitSettings }
+    PntNotificationsSheet { id: notificationsSheet }
     SnackbarType { id: notification }
     LoadingOverlayType {
         id: loading

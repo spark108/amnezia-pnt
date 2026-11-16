@@ -12,6 +12,31 @@ $stage=Join-Path $parent ('PntVPN-update-'+[guid]::NewGuid().ToString('N'))
 $swapped=$false
 $hadService=$false
 $installed=$false
+
+function Stop-PntVpnService($Service) {
+    $timer=[Diagnostics.Stopwatch]::StartNew()
+    $stopError=$null
+    while($timer.Elapsed.TotalSeconds -lt 45) {
+        $Service.Refresh()
+        if($Service.Status -eq 'Stopped'){return}
+        if($Service.Status -in @('Running','Paused')) {
+            try {
+                $Service.Stop()
+                $stopError=$null
+            } catch {
+                $cause=$_.Exception
+                while($cause.InnerException){$cause=$cause.InnerException}
+                if($cause -isnot [ComponentModel.Win32Exception] -or $cause.NativeErrorCode -notin @(1053,1061,1062)){throw $cause}
+                $stopError=$cause.Message
+            }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    $Service.Refresh()
+    if($Service.Status -eq 'Stopped'){return}
+    throw "PntVPN-service did not stop (status: $($Service.Status)). $stopError"
+}
+
 try {
     $principal=[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
     if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Administrator privileges are required.'}
@@ -28,10 +53,7 @@ try {
     if($process -and -not $process.WaitForExit(30000)){throw 'Close PNT VPN before updating.'}
     $service=Get-Service 'PntVPN-service' -ErrorAction SilentlyContinue
     $hadService=$null -ne $service
-    if($service -and $service.Status -ne 'Stopped') {
-        Stop-Service 'PntVPN-service'
-        $service.WaitForStatus('Stopped',[TimeSpan]::FromSeconds(30))
-    }
+    if($service){Stop-PntVpnService $service}
     Move-Item -LiteralPath $target -Destination $backup
     $swapped=$true
     Move-Item -LiteralPath $stage -Destination $target

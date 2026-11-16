@@ -13,6 +13,7 @@
 #include <QLocale>
 #include <QNetworkReply>
 #include <QRegularExpression>
+#include <QSet>
 #include <QTimer>
 #include <QUrl>
 #include <QtConcurrent/QtConcurrentRun>
@@ -42,6 +43,11 @@ PntController::PntController(SecureQSettings *settings, SecureServersRepository 
     });
 #endif
     m_profile = QJsonDocument::fromJson(m_settings->value("Pnt/profile").toByteArray()).object();
+    loadNotifications();
+    m_notificationsTimer.setInterval(30000);
+    connect(&m_notificationsTimer, &QTimer::timeout, this, &PntController::refreshNotifications);
+    m_notificationsTimer.start();
+    QTimer::singleShot(0, this, &PntController::refreshNotifications);
     m_currentServer = m_settings->value("Pnt/serverId").toString();
     m_selectedServer = m_settings->value("Pnt/serverName").toString();
     m_vpnAddress = m_settings->value("Pnt/vpnAddress").toString();
@@ -118,6 +124,141 @@ PntController::~PntController()
 bool PntController::hasProfile() const
 {
     return !m_profile.isEmpty();
+}
+
+QString PntController::notificationsKey() const
+{
+    if (!hasProfile())
+        return {};
+    return "Pnt/notifications/" + m_profile.value("cluster").toString() + "/" + m_profile.value("clientId").toString();
+}
+
+int PntController::unreadNotifications() const
+{
+    return static_cast<int>(std::count_if(m_notifications.cbegin(), m_notifications.cend(), [](const QVariant &notice) {
+        return !notice.toMap().value("read").toBool();
+    }));
+}
+
+void PntController::loadNotifications()
+{
+    m_notificationsCursor.clear();
+    m_notificationsStatus.clear();
+    const auto key = notificationsKey();
+    m_notifications = key.isEmpty() ? QVariantList()
+                                    : QJsonDocument::fromJson(m_settings->value(key).toByteArray()).array().toVariantList();
+    emit notificationsChanged();
+}
+
+void PntController::saveNotifications()
+{
+    m_settings->setValue(notificationsKey(), QJsonDocument(QJsonArray::fromVariantList(m_notifications)).toJson(QJsonDocument::Compact));
+}
+
+void PntController::setNotificationsOpen(bool open)
+{
+    m_notificationsOpen = open;
+    if (!open)
+        return;
+    if (unreadNotifications() > 0) {
+        for (auto &entry : m_notifications) {
+            auto notice = entry.toMap();
+            notice["read"] = true;
+            entry = notice;
+        }
+        saveNotifications();
+        emit notificationsChanged();
+    }
+    refreshNotifications();
+}
+
+void PntController::refreshNotifications()
+{
+    const auto key = notificationsKey();
+    if (key.isEmpty() || m_notificationsPending)
+        return;
+    m_notificationsPending = true;
+    m_notificationsStatus = tr("Получение уведомлений…");
+    emit notificationsChanged();
+    const auto payload = QJsonDocument(QJsonObject { { "action", "notifications" }, { "profile", m_profile },
+                                                     { "cursor", m_notificationsCursor } }).toJson(QJsonDocument::Compact);
+#ifdef Q_OS_ANDROID
+    auto watcher = new QFutureWatcher<QString>(this);
+    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher, key]() {
+        acceptNotifications(key, watcher->result().toUtf8());
+        watcher->deleteLater();
+    });
+    watcher->setFuture(QtConcurrent::run([payload]() {
+        const auto input = QJniObject::fromString(QString::fromUtf8(payload));
+        return QJniObject::callStaticObjectMethod("org/amnezia/vpn/PntTransport", "request",
+                                                  "(Ljava/lang/String;)Ljava/lang/String;", input.object<jstring>()).toString();
+    }));
+#else
+    auto process = new QProcess(this);
+#ifdef Q_OS_WIN
+    process->setCreateProcessArgumentsModifier(m_process.createProcessArgumentsModifier());
+#endif
+    connect(process, &QProcess::started, this, [process, payload]() {
+        process->write(payload + '\n');
+        process->closeWriteChannel();
+    });
+    connect(process, &QProcess::errorOccurred, this, [this, process, key](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            acceptNotifications(key, {});
+            process->deleteLater();
+        }
+    });
+    connect(process, &QProcess::finished, this, [this, process, key]() {
+        acceptNotifications(key, process->readAllStandardOutput());
+        process->deleteLater();
+    });
+    QTimer::singleShot(35000, process, &QProcess::kill);
+    process->start(QDir(QCoreApplication::applicationDirPath()).filePath("pnt-transport.exe"), { "_vpn-client" });
+#endif
+}
+
+void PntController::acceptNotifications(const QString &key, const QByteArray &response)
+{
+    m_notificationsPending = false;
+    if (key != notificationsKey()) {
+        refreshNotifications();
+        return;
+    }
+    const auto result = QJsonDocument::fromJson(response).object();
+    const auto cursor = result.value("cursor").toString();
+    if (cursor.isEmpty() || !result.value("notifications").isArray()) {
+        m_notificationsStatus = tr("Не удалось получить уведомления.");
+        emit notificationsChanged();
+        return;
+    }
+    QSet<QString> received;
+    for (const auto &entry : m_notifications)
+        received.insert(entry.toMap().value("id").toString());
+    bool added = false;
+    for (const auto &entry : result.value("notifications").toArray()) {
+        auto notice = entry.toObject().toVariantMap();
+        const auto id = notice.value("id").toString();
+        if (id.isEmpty() || received.contains(id))
+            continue;
+        received.insert(id);
+        notice["read"] = m_notificationsOpen;
+        m_notifications.append(notice);
+        added = true;
+    }
+    if (added) {
+        std::sort(m_notifications.begin(), m_notifications.end(), [](const QVariant &left, const QVariant &right) {
+            const auto first = left.toMap(), second = right.toMap();
+            const auto firstDate = first.value("created").toLongLong(), secondDate = second.value("created").toLongLong();
+            return firstDate == secondDate ? first.value("id").toString() > second.value("id").toString() : firstDate > secondDate;
+        });
+        saveNotifications();
+    }
+    m_notificationsStatus.clear();
+    const bool more = result.value("more").toBool() && cursor != m_notificationsCursor;
+    m_notificationsCursor = cursor;
+    emit notificationsChanged();
+    if (more)
+        QTimer::singleShot(0, this, &PntController::refreshNotifications);
 }
 bool PntController::busy() const
 {
@@ -349,11 +490,14 @@ void PntController::resetProfile()
 {
     if (m_busy || m_sessionStarted)
         return;
+    if (hasProfile())
+        m_settings->remove(notificationsKey());
     m_settings->remove("Pnt/profile");
     m_settings->remove("Pnt/serverId");
     m_settings->remove("Pnt/serverName");
     m_settings->remove("Pnt/vpnAddress");
     m_profile = { };
+    loadNotifications();
     ++m_catalogGeneration;
     m_catalog.clear();
     m_selectedServer.clear();
@@ -458,6 +602,8 @@ void PntController::acceptResult(const QJsonObject &result)
             return;
         }
         m_status = tr("Профиль PNT импортирован.");
+        loadNotifications();
+        refreshNotifications();
     } else if (m_action == "catalog") {
         const auto entrypoints = result.value("entrypoints").toArray();
         if (!entrypoints.isEmpty()) {
