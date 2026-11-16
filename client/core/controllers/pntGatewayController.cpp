@@ -1,7 +1,8 @@
 #include "gatewayController.h"
 #include <QtConcurrent/QtConcurrentRun>
 
-GatewayController::GatewayController(const QString &, bool, int, bool, SecureAppSettingsRepository *, QObject *parent)
+GatewayController::GatewayController(const amnezia::GatewayEnvironment &, int, bool, SecureAppSettingsRepository *,
+                                     QObject *parent)
     : QObject(parent)
 {
 }

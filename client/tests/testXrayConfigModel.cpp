@@ -75,7 +75,7 @@ void TestXrayConfigModel::isValidSni_data()
 {
     QTest::addColumn<QString>("sni");
     QTest::addColumn<bool>("valid");
-    QTest::newRow("empty") << "" << true;
+    QTest::newRow("empty") << "" << false;
     QTest::newRow("domain") << "www.example.com" << true;
     QTest::newRow("ipv4") << "203.0.113.10" << true;
     QTest::newRow("star") << "*" << false;
@@ -171,7 +171,7 @@ void TestXrayConfigModel::deviceOnlyEditStaysLocal()
                       issued(baseConfig(flowCase ? "raw" : "xhttp", "reality", flowCase ? "xtls-rprx-vision" : "")));
 
     if (edit == QLatin1String("fingerprint"))
-        model.setFingerprint("firefox");
+        model.setFingerprint("safari");
     else if (edit == QLatin1String("method"))
         model.setXhttpUplinkMethod("PATCH");
     else if (edit == QLatin1String("chunk"))
@@ -276,14 +276,14 @@ void TestXrayConfigModel::deviceOnlyEditRebuildsClientConfig()
 {
     XrayConfigModel model;
     model.updateModel(DockerContainer::Xray, issued(baseConfig("xhttp", "reality", "")));
-    model.setFingerprint("firefox");
+    model.setFingerprint("safari");
     model.setXhttpUplinkMethod("PATCH");
 
     const XrayProtocolConfig saved = model.getProtocolConfig();
     QVERIFY(saved.hasClientConfig());
     const QJsonObject native = QJsonDocument::fromJson(saved.clientConfig->nativeConfig.toUtf8()).object();
     const QJsonObject stream = streamOf(vlessOutbound(native));
-    QCOMPARE(stream.value("realitySettings").toObject().value("fingerprint").toString(), QStringLiteral("firefox"));
+    QCOMPARE(stream.value("realitySettings").toObject().value("fingerprint").toString(), QStringLiteral("safari"));
     QCOMPARE(stream.value("xhttpSettings").toObject().value("uplinkHTTPMethod").toString(), QStringLiteral("PATCH"));
     QCOMPARE(stream.value("realitySettings").toObject().value("publicKey").toString(), key32('\x02'));
     QCOMPARE(saved.clientConfig->id, clientId());
@@ -294,7 +294,7 @@ void TestXrayConfigModel::deviceOnlyEditWithBrokenNativeDropsClientConfig()
     XrayConfigModel model;
     const QString broken = QStringLiteral(R"({"outbounds":[{"protocol":"vless","settings":{}}]})");
     model.updateModel(DockerContainer::Xray, withNative(baseConfig("xhttp", "reality", ""), broken));
-    model.setFingerprint("firefox");
+    model.setFingerprint("safari");
 
     QVERIFY2(!model.getProtocolConfig().hasClientConfig(),
              "a native config that cannot be rebuilt must be dropped so the server issues a fresh one");
@@ -307,7 +307,7 @@ void TestXrayConfigModel::unsavedChangesFollowEdits()
     QVERIFY(!model.hasUnsavedChanges());
 
     const QString original = model.fingerprint();
-    model.setFingerprint("firefox");
+    model.setFingerprint("safari");
     QVERIFY(model.hasUnsavedChanges());
     model.setFingerprint(original);
     QVERIFY(!model.hasUnsavedChanges());

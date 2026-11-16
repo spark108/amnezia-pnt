@@ -20,6 +20,11 @@
     #include <QJniObject>
 #endif
 
+namespace
+{
+    const PntVersion installedVersion { QStringLiteral(APP_VERSION), QStringLiteral(PNT_REVISION) };
+}
+
 PntUpdateController::PntUpdateController(QObject *parent) : QObject(parent)
 {
     QTimer::singleShot(3000, this, &PntUpdateController::check);
@@ -31,7 +36,7 @@ PntUpdateController::PntUpdateController(QObject *parent) : QObject(parent)
 
 QString PntUpdateController::currentVersion() const
 {
-    return QStringLiteral(APP_VERSION);
+    return installedVersion.displayName();
 }
 
 QString PntUpdateController::assetName() const
@@ -69,7 +74,9 @@ void PntUpdateController::check()
     emit changed();
     QNetworkRequest request(QUrl("https://api.github.com/repos/spark108/amnezia-pnt/releases/latest"));
     request.setRawHeader("Accept", "application/vnd.github+json");
-    request.setRawHeader("User-Agent", "PntVPN/" + currentVersion().toLatin1());
+    request.setRawHeader(
+            "User-Agent",
+            QStringLiteral("PntVPN/%1 (rev %2)").arg(installedVersion.amnezia, installedVersion.revision).toLatin1());
     request.setTransferTimeout(15000);
     auto reply = m_network.get(request);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
@@ -94,9 +101,9 @@ void PntUpdateController::check()
             fail(tr("В релизе нет подходящего пакета с SHA-256."));
             return;
         }
-        m_release = release->newerThan(currentVersion()) ? release : std::nullopt;
+        m_release = release->version.newerThan(installedVersion) ? release : std::nullopt;
         m_busy = false;
-        m_status = m_release ? tr("Доступна версия %1").arg(m_release->version) : tr("Установлена последняя версия.");
+        m_status = m_release ? tr("Доступна версия %1").arg(latestVersion()) : tr("Установлена последняя версия.");
         emit changed();
     });
 }
@@ -198,12 +205,14 @@ void PntUpdateController::install()
             + QString::fromLatin1(m_release->sha256.toHex()) + " -ParentProcessId "
             + QString::number(QCoreApplication::applicationPid());
     const QString executable = qEnvironmentVariable("SystemRoot") + "/System32/WindowsPowerShell/v1.0/powershell.exe";
+    const QString workingDirectory = QDir::toNativeSeparators(QFileInfo(scriptPath).absolutePath());
     SHELLEXECUTEINFOW info { };
     info.cbSize = sizeof(info);
     info.fMask = SEE_MASK_NOCLOSEPROCESS;
     info.lpVerb = L"runas";
     info.lpFile = reinterpret_cast<LPCWSTR>(executable.utf16());
     info.lpParameters = reinterpret_cast<LPCWSTR>(arguments.utf16());
+    info.lpDirectory = reinterpret_cast<LPCWSTR>(workingDirectory.utf16());
     info.nShow = SW_SHOWNORMAL;
     if (!ShellExecuteExW(&info)) {
         fail(tr("Установка отменена или не удалось запустить установщик."));

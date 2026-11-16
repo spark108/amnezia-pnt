@@ -24,7 +24,7 @@ public:
     QString currentVersion() const;
     QString latestVersion() const
     {
-        return m_release ? m_release->version : QString();
+        return m_release ? m_release->version.displayName() : QString();
     }
     QString status() const
     {

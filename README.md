@@ -61,7 +61,7 @@ Ping is displayed as exit/internet latency, for example `100ms/103ms`; `—` mea
 
 ## Updates and diagnostics
 
-The version is shown at the bottom center. Updates are checked in the background on startup and periodically; click the version to check manually. A newer version appears in green with an arrow. Click it to download and install after size/SHA-256 verification. Windows requests elevation; Android uses the system package installer. VPN is disconnected for installation. Keep the same Android application ID and compatible signing identity to preserve data.
+The bottom of the window shows the AmneziaVPN version and the PNT revision, for example `5.1.1.8 rev 1.1`. Updates are checked on startup and periodically. Click the version to check manually. An available update appears after an arrow, for example `5.1.1.8 rev 1.1 → 5.1.1.8 rev 1.2`. Click it to download and install after size/SHA-256 verification. Windows requests elevation and Android uses the system package installer. VPN is disconnected for installation. Keep the same Android application ID and compatible signing identity to preserve data.
 
 Release assets must be named `PntVPN-windows-x64.zip` and `PntVPN-android-arm64.apk`; checksums are provided in `SHA256SUMS.txt`. Replaced assets with the same version do not trigger a version-based update: download and reinstall the APK manually in that case.
 
@@ -93,7 +93,9 @@ cmake --build build-android --target PntVPN_prepare_apk_dir --parallel
 
 Use the generated deployment settings with `androiddeployqt` to prepare the full Android manifest/resources and native libraries, then build the OSS Gradle variant. Ensure the newly built `libPntVPN_arm64-v8a.so` is included. Signing production APKs requires the persistent release key and its signing lineage. Never put keys/passwords in the repository.
 
-Android unit checks use `testOssDebugUnitTest`. `PNT_TEST_PROFILE` can point to a temporary test profile outside the repository for .NET signature/identity interoperability tests; geolocation signature fixtures contain public test certificates only. Additional focused checks are under `client/tests/`. Increase `PNT_VERSION` and the PNT Android version code for a new release.
+Android unit checks use `testOssDebugUnitTest`. `PNT_TEST_PROFILE` can point to a temporary test profile outside the repository for .NET signature/identity interoperability tests. Geolocation signature fixtures contain public test certificates only. Additional focused checks are under `client/tests/`.
+
+For a release with PNT changes, increase `PNT_REVISION` in `CMakeLists.txt`. For an upstream-only update, take the AmneziaVPN version from upstream and keep the PNT revision. Increase `PNT_RELEASE_CODE` for each published release so Android accepts the upgrade. CMake prints the GitHub release title and numeric tag. The transition release uses tag `5.1.0.13` and title `PNT VPN 5.1.1.8 rev 1.1`. Subsequent tags use the first three AmneziaVPN version components followed by `PNT_RELEASE_CODE`, with a leading `v`. Keep the title in the format `PNT VPN <AmneziaVPN version> rev <PNT revision>` for automatic updates.
 
 ## Upstream and license
 

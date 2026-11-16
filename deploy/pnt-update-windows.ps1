@@ -41,10 +41,13 @@ try {
     $principal=[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())
     if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Administrator privileges are required.'}
     if(-not (Test-Path -LiteralPath (Join-Path $target 'PntVPN.exe'))){throw 'The installed PNT VPN directory was not found.'}
+    $Archive=(Get-Item -LiteralPath $Archive).FullName
     if((Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash -ne $ExpectedHash){throw 'The update SHA-256 does not match.'}
     foreach($path in @($stage,$backup)) {
         if((Split-Path -Parent ([IO.Path]::GetFullPath($path))) -ne $parent -or $path -eq $target){throw 'Invalid staging directory.'}
     }
+    Set-Location -LiteralPath $parent
+    [Environment]::CurrentDirectory=$parent
     Expand-Archive -LiteralPath $Archive -DestinationPath $stage
     foreach($file in @('PntVPN.exe','PntVPN-service.exe','pnt-transport.exe','install.ps1')) {
         if(-not (Test-Path -LiteralPath (Join-Path $stage $file) -PathType Leaf)){throw "Incomplete update: $file"}

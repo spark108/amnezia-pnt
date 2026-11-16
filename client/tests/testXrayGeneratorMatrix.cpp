@@ -185,7 +185,7 @@ void TestXrayGeneratorMatrix::deviceOnlyChangesKeepServerView()
                                          field == "udp443" ? "xtls-rprx-vision" : "");
     XrayServerConfig after = before;
     if (field == "fingerprint")
-        after.fingerprint = QStringLiteral("firefox");
+        after.fingerprint = QStringLiteral("safari");
     else if (field == "uplinkMethod")
         after.xhttp.uplinkMethod = QStringLiteral("PATCH");
     else if (field == "uplinkChunkSize")
